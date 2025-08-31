@@ -1,0 +1,175 @@
+gox: LLM quickstart and usage guide
+
+Purpose: Help LLMs (Cursor, Claude, ChatGPT, Gemini) use gox packages correctly.
+
+Repository: github.com/guilhermebr/gox
+Packages:
+- github.com/guilhermebr/gox/http
+- github.com/guilhermebr/gox/logger
+- github.com/guilhermebr/gox/monetary
+- github.com/guilhermebr/gox/postgres
+- github.com/guilhermebr/gox/supabase
+
+General rules for code generation:
+- Always `go get` the specific subpackage before use.
+- Prefer environment-driven configuration using a prefix (e.g., "APP" or "DB").
+- Use context where applicable (database, network operations).
+- Import logger and pass it to packages that accept it.
+- Handle errors explicitly; do not ignore returned errors.
+
+---
+logger (github.com/guilhermebr/gox/logger)
+- What it is: Configurable slog logger with env-driven level/format and sane defaults.
+- Install: `go get github.com/guilhermebr/gox/logger`
+- Default env vars (prefix example: APP):
+  - APP_LOGGING_LEVEL (info|debug|warn|error) default: info
+  - APP_LOGGING_TYPE (text|json) default: text
+  - APP_LOGGING_STDERR (true|false) default: false
+  - APP_ENVIRONMENT (development|production) default: development
+- Create a logger:
+  Example:
+  
+  import "github.com/guilhermebr/gox/logger"
+  
+  log, err := logger.NewLogger("APP")
+  if err != nil { panic(err) }
+  log.Info("started", "version", "1.0.0")
+  
+- Custom config:
+  cfg := logger.Config{Level: "debug", Type: "json", Environment: "production"}
+  log, err := logger.NewLoggerConfig(cfg)
+
+---
+http (github.com/guilhermebr/gox/http)
+- What it is: Thin wrapper over net/http with graceful shutdown, env config, multi-server management.
+- Install: `go get github.com/guilhermebr/gox/http`
+- Default env vars (prefix example: HTTP):
+  - HTTP_ADDRESS (default: 0.0.0.0:3000)
+  - HTTP_READ_HEADER_TIMEOUT (default: 60s)
+  - HTTP_READ_TIMEOUT (default: 10s)
+  - HTTP_WRITE_TIMEOUT (default: 10s)
+  - HTTP_IDLE_TIMEOUT (default: 60s)
+  - HTTP_SHUTDOWN_TIMEOUT (default: 20s)
+- Single server example:
+  
+  import (
+      goxhttp "github.com/guilhermebr/gox/http"
+      "github.com/guilhermebr/gox/logger"
+      "net/http"
+  )
+  
+  log, _ := logger.NewLogger("APP")
+  mux := http.NewServeMux()
+  mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+      w.WriteHeader(http.StatusOK)
+      _, _ = w.Write([]byte("ok"))
+  })
+  srv, err := goxhttp.NewServer("HTTP", mux, log)
+  if err != nil { panic(err) }
+  if err := srv.StartWithGracefulShutdown(); err != nil {
+      log.Error("server exited", "error", err)
+  }
+  
+- Multiple servers example:
+  
+  log, _ := logger.NewLogger("APP")
+  mgr := goxhttp.NewServerManager(log)
+  api, _ := goxhttp.NewServer("API", apiMux, log)
+  admin, _ := goxhttp.NewServer("ADMIN", adminMux, log)
+  mgr.AddServer(api)
+  mgr.AddServer(admin)
+  _ = mgr.StartAll()
+
+---
+monetary (github.com/guilhermebr/gox/monetary)
+- What it is: Precise monetary arithmetic using integers (big.Int) with fiat and crypto assets.
+- Install: `go get github.com/guilhermebr/gox/monetary`
+- Key operations: create from string, add/sub/mul/div, compare, JSON marshal/unmarshal, parse/format.
+- Example usage:
+  
+  import (
+      "math/big"
+      "github.com/guilhermebr/gox/monetary"
+  )
+  usd100, _ := monetary.NewMonetaryFromString(monetary.USD, "100.50")
+  usd50,  _ := monetary.NewMonetaryFromString(monetary.USD, "50.25")
+  sum, _ := usd100.Add(usd50) // 150.75
+  btc, _ := monetary.NewMonetaryFromString(monetary.BTC, "0.00123456")
+  amount := big.NewInt(10050)
+  usd, _ := monetary.NewMonetary(monetary.USD, amount)
+  asset, ok := monetary.FindAssetBySymbol("BTC")
+  _ = asset
+  _ = ok
+
+---
+postgres (github.com/guilhermebr/gox/postgres)
+- What it is: Simple constructor for a pgx connection pool using env-driven config.
+- Install: `go get github.com/guilhermebr/gox/postgres`
+- Default env vars (prefix example: DB):
+  - DB_DATABASE_HOST default: localhost
+  - DB_DATABASE_PORT default: 5432
+  - DB_DATABASE_USER required
+  - DB_DATABASE_PASSWORD required
+  - DB_DATABASE_NAME required
+  - DB_DATABASE_SSLMODE default: disable
+  - DB_DATABASE_POOL_MIN_SIZE default: 2
+  - DB_DATABASE_POOL_MAX_SIZE default: 10
+- Example usage:
+  
+  import (
+      "context"
+      "github.com/guilhermebr/gox/postgres"
+  )
+  ctx := context.Background()
+  pool, err := postgres.New(ctx, "DB")
+  if err != nil { panic(err) }
+  // pool.Query(ctx, "SELECT 1")
+
+---
+supabase (github.com/guilhermebr/gox/supabase)
+- What it is: Helper to construct a Supabase client from env vars.
+- Install: `go get github.com/guilhermebr/gox/supabase`
+- Default env vars (prefix example: APP):
+  - APP_SUPABASE_URL required
+  - APP_SUPABASE_KEY required
+- Example usage:
+  
+  import (
+      "github.com/guilhermebr/gox/supabase"
+  )
+  client, err := supabase.New("APP")
+  if err != nil { panic(err) }
+  // client.From("users").Select("*")
+
+---
+Composition example (logger + http + postgres):
+
+import (
+    goxhttp "github.com/guilhermebr/gox/http"
+    "github.com/guilhermebr/gox/logger"
+    "github.com/guilhermebr/gox/postgres"
+    "context"
+    "net/http"
+)
+
+func main() {
+    log, err := logger.NewLogger("APP")
+    if err != nil { panic(err) }
+
+    ctx := context.Background()
+    db, err := postgres.New(ctx, "DB")
+    if err != nil { panic(err) }
+    _ = db
+
+    mux := http.NewServeMux()
+    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        _, _ = w.Write([]byte("ok"))
+    })
+
+    srv, err := goxhttp.NewServer("HTTP", mux, log)
+    if err != nil { panic(err) }
+    if err := srv.StartWithGracefulShutdown(); err != nil {
+        log.Error("server exited", "error", err)
+    }
+}

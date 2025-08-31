@@ -28,6 +28,44 @@ if err != nil {
 logger.Info("Application started", "version", "1.0.0")
 ```
 
+### HTTP
+
+The `http` module provides a thin wrapper around Go's `net/http` server with sensible configuration via environment variables, graceful shutdown, and a `ServerManager` to run multiple servers.
+
+#### Features
+- Graceful shutdown on SIGINT/SIGTERM with configurable timeout
+- Environment-driven configuration (address, timeouts)
+- Run one or many servers with `ServerManager`
+- Structured logging via `slog`
+
+#### Usage
+```go
+import (
+    goxhttp "github.com/guilhermebr/gox/http"
+    "github.com/guilhermebr/gox/logger"
+    "net/http"
+)
+
+func main() {
+    log, _ := logger.NewLogger("APP")
+
+    mux := http.NewServeMux()
+    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        _, _ = w.Write([]byte("ok"))
+    })
+
+    srv, err := goxhttp.NewServer("HTTP", mux, log)
+    if err != nil {
+        panic(err)
+    }
+
+    if err := srv.StartWithGracefulShutdown(); err != nil {
+        log.Error("server exited", "error", err)
+    }
+}
+```
+
 ### Postgres
 
 The `postgres` module provides a simple way to create and manage PostgreSQL database connections using connection pools.
