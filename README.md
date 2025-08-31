@@ -9,12 +9,14 @@ Gox is a collection of Go modules that provide common functionality and utilitie
 The `logger` module provides a flexible logging system built on top of Go's `slog` package. It supports both JSON and text-based logging formats, with configurable log levels and output destinations.
 
 #### Features
+
 - Configurable log levels (DEBUG, INFO, WARN, ERROR)
 - Support for both JSON and text-based logging formats
 - Environment-aware defaults (development vs production)
 - Configurable output destination (stdout/stderr)
 
 #### Usage
+
 ```go
 import "github.com/guilhermebr/gox/logger"
 
@@ -33,12 +35,14 @@ logger.Info("Application started", "version", "1.0.0")
 The `http` module provides a thin wrapper around Go's `net/http` server with sensible configuration via environment variables, graceful shutdown, and a `ServerManager` to run multiple servers.
 
 #### Features
+
 - Graceful shutdown on SIGINT/SIGTERM with configurable timeout
 - Environment-driven configuration (address, timeouts)
 - Run one or many servers with `ServerManager`
 - Structured logging via `slog`
 
 #### Usage
+
 ```go
 import (
     goxhttp "github.com/guilhermebr/gox/http"
@@ -71,11 +75,13 @@ func main() {
 The `postgres` module provides a simple way to create and manage PostgreSQL database connections using connection pools.
 
 #### Features
+
 - Connection pool management using `pgx`
 - Configuration through environment variables
 - Context-aware connection handling
 
 #### Usage
+
 ```go
 import "github.com/guilhermebr/gox/postgres"
 
@@ -94,11 +100,13 @@ if err != nil {
 The `supabase` module provides a simple way to create and configure Supabase clients for interacting with Supabase services.
 
 #### Features
+
 - Easy Supabase client creation
 - Configuration through environment variables
 - Built on top of the official Supabase Go client
 
 #### Usage
+
 ```go
 import "github.com/guilhermebr/gox/supabase"
 
@@ -117,6 +125,7 @@ if err != nil {
 The `monetary` module provides types and functions for handling monetary values with precise arithmetic using `big.Int`. It supports both fiat currencies and cryptocurrencies, storing amounts as integers in the smallest unit to maintain precision.
 
 #### Features
+
 - Precise arithmetic using `big.Int` for amounts (no floating-point errors)
 - Support for fiat currencies (USD, BRL, GBP, CHF, JPY, etc.)
 - Support for cryptocurrencies (BTC, ETH, USDT, USDC, etc.)
@@ -127,6 +136,7 @@ The `monetary` module provides types and functions for handling monetary values 
 - Predefined assets with appropriate precision
 
 #### Usage
+
 ```go
 import "github.com/guilhermebr/gox/monetary"
 
@@ -163,14 +173,16 @@ if found {
 The Logger, Postgres, and Supabase modules use the `ardanlabs/conf` package for configuration management. Configuration can be provided through environment variables with the specified prefix. The Monetary module does not require external configuration.
 
 ### Logger Configuration
+
 - `APP_LOGGING_LEVEL`: Log level (DEBUG, INFO, WARN, ERROR)
 - `APP_LOGGING_TYPE`: Log format (JSON, TEXT)
 - `APP_LOGGING_STDERR`: Output to stderr instead of stdout (true/false)
 - `APP_ENVIRONMENT`: Environment (development/production)
 
 ### Postgres Configuration
-- `DB_DATABASE_HOST_DIRECT`: Database host
-- `DB_DATABASE_PORT_DIRECT`: Database port
+
+- `DB_DATABASE_HOST`: Database host
+- `DB_DATABASE_PORT`: Database port
 - `DB_DATABASE_USER`: Database user
 - `DB_DATABASE_PASSWORD`: Database password
 - `DB_DATABASE_NAME`: Database name
@@ -179,6 +191,7 @@ The Logger, Postgres, and Supabase modules use the `ardanlabs/conf` package for 
 - `DB_DATABASE_POOL_MAX_SIZE`: Maximum pool size
 
 ### Supabase Configuration
+
 - `APP_SUPABASE_URL`: Supabase project URL
 - `APP_SUPABASE_KEY`: Supabase API key (anon or service role key)
 
@@ -194,4 +207,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
