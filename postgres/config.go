@@ -7,8 +7,8 @@ type Config struct {
 	DatabaseName        string `conf:"env:DATABASE_NAME,required"`
 	DatabaseUser        string `conf:"env:DATABASE_USER,required"`
 	DatabasePassword    string `conf:"env:DATABASE_PASSWORD,required,mask"`
-	DatabaseHost        string `conf:"env:DATABASE_HOST_DIRECT,default:localhost"`
-	DatabasePort        string `conf:"env:DATABASE_PORT_DIRECT,default:5432"`
+	DatabaseHost        string `conf:"env:DATABASE_HOST,default:localhost"`
+	DatabasePort        string `conf:"env:DATABASE_PORT,default:5432"`
 	DatabaseSSLMode     string `conf:"env:DATABASE_SSLMODE,default:disable"`
 	DatabasePoolMinSize int32  `conf:"env:DATABASE_POOL_MIN_SIZE,default:2"`
 	DatabasePoolMaxSize int32  `conf:"env:DATABASE_POOL_MAX_SIZE,default:10"`

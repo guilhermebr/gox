@@ -18,8 +18,8 @@ func TestNew(t *testing.T) {
 			name:   "Valid configuration",
 			prefix: "DB",
 			envVars: map[string]string{
-				"DB_DATABASE_HOST_DIRECT":   "localhost",
-				"DB_DATABASE_PORT_DIRECT":   "5432",
+				"DB_DATABASE_HOST":          "localhost",
+				"DB_DATABASE_PORT":          "5432",
 				"DB_DATABASE_USER":          "test",
 				"DB_DATABASE_PASSWORD":      "test",
 				"DB_DATABASE_NAME":          "testdb",
@@ -33,7 +33,7 @@ func TestNew(t *testing.T) {
 			name:   "Missing required configuration",
 			prefix: "DB",
 			envVars: map[string]string{
-				"DB_DATABASE_HOST_DIRECT": "localhost",
+				"DB_DATABASE_HOST": "localhost",
 				// Missing other required fields
 			},
 			wantErr: true,
@@ -42,8 +42,8 @@ func TestNew(t *testing.T) {
 			name:   "Invalid port",
 			prefix: "DB",
 			envVars: map[string]string{
-				"DB_DATABASE_HOST_DIRECT":   "localhost",
-				"DB_DATABASE_PORT_DIRECT":   "invalid",
+				"DB_DATABASE_HOST":          "localhost",
+				"DB_DATABASE_PORT":          "invalid",
 				"DB_DATABASE_USER":          "test",
 				"DB_DATABASE_PASSWORD":      "test",
 				"DB_DATABASE_NAME":          "testdb",
