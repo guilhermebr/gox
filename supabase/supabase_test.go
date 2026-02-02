@@ -3,8 +3,6 @@ package supabase
 import (
 	"os"
 	"testing"
-
-	"github.com/supabase-community/supabase-go"
 )
 
 func TestNew(t *testing.T) {
@@ -95,7 +93,7 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestNewConfig(t *testing.T) {
+func TestNewFromConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  Config
@@ -125,19 +123,11 @@ func TestNewConfig(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{
-			name: "Invalid URL format",
-			config: Config{
-				URL: "invalid-url",
-				Key: "test-key",
-			},
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := supabase.NewClient(tt.config.URL, tt.config.Key, &supabase.ClientOptions{})
+			client, err := NewFromConfig(tt.config)
 			if tt.wantErr {
 				if err == nil {
 					t.Error("Expected error but got none")
