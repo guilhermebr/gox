@@ -8,7 +8,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+
 // New creates a new Postgres connection pool using the provided context and configuration prefix.
+// Deprecated: Use NewOptimized for better performance and monitoring capabilities.
 func New(ctx context.Context, prefix string) (*pgxpool.Pool, error) {
 	var cfg Config
 
@@ -24,3 +26,4 @@ func New(ctx context.Context, prefix string) (*pgxpool.Pool, error) {
 
 	return pool, nil
 }
+

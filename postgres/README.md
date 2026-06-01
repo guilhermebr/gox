@@ -35,7 +35,7 @@ Prefix your env vars (e.g., `DB_`).
 - `<PREFIX>_DATABASE_PASSWORD` (required)
 - `<PREFIX>_DATABASE_NAME` (required)
 - `<PREFIX>_DATABASE_SSLMODE` (default: `disable`)
-- `<PREFIX>_DATABASE_POOL_MIN_SIZE` (default: `2`)
-- `<PREFIX>_DATABASE_POOL_MAX_SIZE` (default: `10`)
+- `<PREFIX>_DATABASE_POOL_MIN_SIZE` (default: `5`)
+- `<PREFIX>_DATABASE_POOL_MAX_SIZE` (default: `25`)
 
 
