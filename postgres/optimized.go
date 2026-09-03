@@ -50,6 +50,12 @@ func NewOptimized(ctx context.Context, prefix string, logger *slog.Logger) (*Dat
 	poolConfig.MaxConnLifetime = cfg.DatabaseMaxConnLifetime
 	poolConfig.MaxConnIdleTime = cfg.DatabaseMaxConnIdleTime
 	poolConfig.HealthCheckPeriod = cfg.DatabaseHealthCheckPeriod
+	// Stagger connection expiry. A pool whose conns are all created together
+	// (e.g. at boot) otherwise recycles them simultaneously at
+	// MaxConnLifetime — a synchronized mass-reconnect that can wedge a small
+	// pool behind a shared proxy. Spreading expiry over the second half of
+	// each conn's lifetime de-synchronizes the herd.
+	poolConfig.MaxConnLifetimeJitter = cfg.DatabaseMaxConnLifetime / 2
 
 	// Create connection pool
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
@@ -212,4 +218,3 @@ func (db *DatabasePool) Close() {
 
 	db.Pool.Close()
 }
-
