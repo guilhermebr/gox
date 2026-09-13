@@ -1,0 +1,13 @@
+go 1.26
+
+use (
+	.
+	./examples
+	./http
+	./jwt
+	./logger
+	./monetary
+	./osrelease
+	./postgres
+	./supabase
+)
