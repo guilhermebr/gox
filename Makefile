@@ -1,44 +1,66 @@
-MODULES := http jwt logger monetary osrelease postgres supabase
+# gox is a multi-module repository: the root module plus one module per
+# feature package and one for examples. Every target below iterates over all
+# of them so `make ci` is the single command CI and contributors run.
 
-.PHONY: all test test-race fmt fmt-check vet lint gosec vulncheck tidy ci
+MODULES := $(shell find . -name go.mod -not -path './.git/*' -exec dirname {} \; | sort)
+LINT_CONFIG := $(CURDIR)/.golangci.yml
+GOLANGCI_LINT ?= golangci-lint
 
-all: fmt-check vet lint test-race
+define foreach_module
+	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && $(1)) || exit 1; done
+endef
 
-## test: run tests for every module
+.PHONY: all build test test-integration lint fmt fmt-check vet tidy vulncheck check-deps check-lint-rules ci help
+
+all: ci
+
+## build: compile every package in every module (binaries go to a temp dir)
+build:
+	$(call foreach_module,go build -o "$$(mktemp -d)" ./...)
+
+## test: run tests with the race detector in every module
 test:
-	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && go test ./... -count=1) || exit 1; done
+	$(call foreach_module,go test ./... -race -count=1)
 
-## test-race: run tests with the race detector for every module
-test-race:
-	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && go test ./... -race -count=1) || exit 1; done
+## test-integration: run tests tagged `integration` (needs DATABASE_URL or a container runtime)
+test-integration:
+	$(call foreach_module,go test ./... -race -count=1 -tags integration)
 
-## fmt: format every module
+## lint: run golangci-lint with the shared config in every module
+lint:
+	$(call foreach_module,$(GOLANGCI_LINT) run --config $(LINT_CONFIG) ./...)
+
+## fmt: format every module (gofumpt + goimports via golangci-lint)
 fmt:
-	@for m in $(MODULES); do (cd $$m && gofmt -w .); done
+	$(call foreach_module,$(GOLANGCI_LINT) fmt --config $(LINT_CONFIG) ./...)
 
 ## fmt-check: fail if any file needs formatting
 fmt-check:
-	@fail=0; for m in $(MODULES); do out=$$(cd $$m && gofmt -l .); if [ -n "$$out" ]; then echo "$$m: $$out"; fail=1; fi; done; exit $$fail
+	$(call foreach_module,$(GOLANGCI_LINT) fmt --config $(LINT_CONFIG) --diff ./...)
 
-## vet: run go vet for every module
+## vet: run go vet in every module
 vet:
-	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && go vet ./...) || exit 1; done
+	$(call foreach_module,go vet ./...)
 
-## lint: run golangci-lint for every module
-lint:
-	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && golangci-lint run ./...) || exit 1; done
-
-## gosec: run gosec for every module
-gosec:
-	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && gosec -quiet ./...) || exit 1; done
-
-## vulncheck: run govulncheck for every module
-vulncheck:
-	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && govulncheck ./...) || exit 1; done
-
-## tidy: run go mod tidy for every module
+## tidy: run go mod tidy in every module
 tidy:
-	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && go mod tidy) || exit 1; done
+	$(call foreach_module,GOWORK=off go mod tidy)
+
+## vulncheck: run govulncheck in every module
+vulncheck:
+	$(call foreach_module,govulncheck ./...)
+
+## check-deps: prove the import-as-opt-in rule on the example binaries
+check-deps:
+	@scripts/check-deps.sh examples/minimal absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/golang-jwt/jwt/v5 github.com/a-h/templ
+
+## check-lint-rules: prove the depguard dependency rules fire on a planted violation
+check-lint-rules:
+	@scripts/check-lint-rules.sh
 
 ## ci: the full check suite
-ci: fmt-check vet lint test-race
+ci: fmt-check vet lint test check-deps check-lint-rules
+
+## help: list targets
+help:
+	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## //' | column -t -s ':'
