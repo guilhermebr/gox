@@ -22,7 +22,6 @@ func (a *App) Run() error {
 // RunContext is Run with a caller-supplied context: cancel it to shut down.
 func (a *App) RunContext(ctx context.Context) error {
 	a.log.Info("starting",
-		slog.String("service", a.name),
 		slog.String("version", a.cfg.Version),
 		slog.String("environment", a.cfg.Environment),
 		slog.String("config_prefix", a.prefix))

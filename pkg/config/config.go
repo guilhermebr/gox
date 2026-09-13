@@ -79,9 +79,20 @@ type HTTPClientConfig struct {
 	IdleConnTimeout time.Duration `conf:"default:90s"`
 }
 
-// BaseConfig returns the embedded Base. Services get it for free by embedding
-// Base; Load uses it to find the framework fields inside a user struct.
-func (b *Base) BaseConfig() *Base { return b }
+// goxBase marks Base and every struct that embeds it. It is unexported on
+// purpose: an embedded field named after the type would shadow an exported
+// method, while an unexported promoted method cannot be shadowed by accident.
+func (b *Base) goxBase() *Base { return b }
+
+// BaseOf returns the Base embedded in dst, or false if dst does not embed
+// Base.
+func BaseOf(dst any) (*Base, bool) {
+	h, ok := dst.(baseHolder)
+	if !ok {
+		return nil, false
+	}
+	return h.goxBase(), true
+}
 
 // Validate checks the framework fields. Messages name the environment
 // variable (without prefix) so the fix is obvious.
@@ -126,7 +137,7 @@ type Validator interface {
 }
 
 type baseHolder interface {
-	BaseConfig() *Base
+	goxBase() *Base
 }
 
 // Section is a feature package's config struct, loaded under
@@ -173,11 +184,10 @@ func Load(prefix string, dst any) error {
 // LoadSections is Load plus every feature section, in one pass, with one
 // combined --help.
 func LoadSections(prefix string, dst any, sections []Section) error {
-	holder, ok := dst.(baseHolder)
+	base, ok := BaseOf(dst)
 	if !ok {
 		return fmt.Errorf("config: %T must embed config.Base (gox.BaseConfig)", dst)
 	}
-	base := holder.BaseConfig()
 
 	if _, err := conf.Parse(prefix, dst); err != nil {
 		err = nameVariable(prefix, err)
