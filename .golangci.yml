@@ -1,0 +1,181 @@
+# golangci-lint v2 configuration shared by every module in this repository.
+# Run from a module directory: golangci-lint run --config ../.golangci.yml ./...
+# (the Makefile does this for you).
+#
+# depguard enforces the dependency direction from GOX_FRAMEWORK_PLAN.md §2:
+#   root gox            -> pkg/*, stdlib, ardanlabs/conf, OpenTelemetry only
+#   pkg/*               -> other pkg/*, stdlib, third-party; never root or features
+#   feature packages    -> root, pkg/*, their own deps; never other features or shims
+#   monetary, osrelease -> stdlib only
+version: "2"
+
+run:
+  timeout: 5m
+  # Report paths relative to the repository root so depguard's file globs and
+  # the output are stable no matter which module directory lint runs from.
+  relative-path-mode: gitroot
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - errcheck
+    - govet
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    depguard:
+      rules:
+        # Root package: only files at the repository root belong to it. Every
+        # known subdirectory is excluded; a new top-level directory must be
+        # added here so it is classified deliberately.
+        root:
+          list-mode: strict
+          files:
+            - "$all"
+            - "!**/pkg/**"
+            - "!**/postgres/**"
+            - "!**/supabase/**"
+            - "!**/jwt/**"
+            - "!**/web/**"
+            - "!**/http/**"
+            - "!**/logger/**"
+            - "!**/monetary/**"
+            - "!**/osrelease/**"
+            - "!**/examples/**"
+            - "!**/cmd/**"
+            - "!**/template/**"
+          allow:
+            - $gostd
+            - github.com/guilhermebr/gox/pkg
+            - github.com/ardanlabs/conf
+            - go.opentelemetry.io
+        pkg:
+          list-mode: lax
+          files:
+            - "**/pkg/**"
+          deny:
+            - pkg: github.com/guilhermebr/gox$
+              desc: pkg/* never imports the root package
+            - pkg: github.com/guilhermebr/gox/postgres
+              desc: pkg/* never imports a feature package
+            - pkg: github.com/guilhermebr/gox/supabase
+              desc: pkg/* never imports a feature package
+            - pkg: github.com/guilhermebr/gox/jwt
+              desc: pkg/* never imports a feature package
+            - pkg: github.com/guilhermebr/gox/web
+              desc: pkg/* never imports a feature package
+            - pkg: github.com/guilhermebr/gox/http
+              desc: pkg/* never imports a deprecated shim
+            - pkg: github.com/guilhermebr/gox/logger
+              desc: pkg/* never imports a deprecated shim
+            - pkg: github.com/guilhermebr/gox/examples
+              desc: pkg/* never imports examples
+            - pkg: github.com/guilhermebr/gox/cmd
+              desc: pkg/* never imports cmd
+        feature-postgres:
+          list-mode: lax
+          files:
+            - "**/postgres/**"
+          deny:
+            - pkg: github.com/guilhermebr/gox/supabase
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/jwt
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/web
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/http
+              desc: feature packages do not import deprecated shims
+            - pkg: github.com/guilhermebr/gox/logger
+              desc: feature packages do not import deprecated shims
+        feature-supabase:
+          list-mode: lax
+          files:
+            - "**/supabase/**"
+          deny:
+            - pkg: github.com/guilhermebr/gox/postgres
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/jwt
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/web
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/http
+              desc: feature packages do not import deprecated shims
+            - pkg: github.com/guilhermebr/gox/logger
+              desc: feature packages do not import deprecated shims
+        feature-jwt:
+          list-mode: lax
+          files:
+            - "**/jwt/**"
+          deny:
+            - pkg: github.com/guilhermebr/gox/postgres
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/supabase
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/web
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/http
+              desc: feature packages do not import deprecated shims
+            - pkg: github.com/guilhermebr/gox/logger
+              desc: feature packages do not import deprecated shims
+        feature-web:
+          list-mode: lax
+          files:
+            - "**/web/**"
+          deny:
+            - pkg: github.com/guilhermebr/gox/postgres
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/supabase
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/jwt
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/http
+              desc: feature packages do not import deprecated shims
+            - pkg: github.com/guilhermebr/gox/logger
+              desc: feature packages do not import deprecated shims
+        utilities:
+          list-mode: strict
+          files:
+            - "**/monetary/**"
+            - "**/osrelease/**"
+          allow:
+            - $gostd
+  exclusions:
+    generated: lax
+    paths:
+      - ".*_templ\\.go$"
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/guilhermebr/gox
