@@ -8,16 +8,20 @@ import (
 	"github.com/supabase-community/supabase-go"
 )
 
-// New creates a new Supabase client from environment variables.
+// New creates a client from <PREFIX>_SUPABASE_URL and <PREFIX>_SUPABASE_KEY.
+//
+// Deprecated: pass supabase.Enable() to gox.New and read the client with
+// supabase.From. New is removed one minor version after the root package
+// reaches v1.
 func New(prefix string) (*supabase.Client, error) {
-	var cfg Config
-
-	_, err := conf.Parse(prefix, &cfg)
-	if err != nil {
+	var lc struct {
+		URL string `conf:"env:SUPABASE_URL,required"`
+		Key string `conf:"env:SUPABASE_KEY,required,mask"`
+	}
+	if _, err := conf.Parse(prefix, &lc); err != nil {
 		return nil, fmt.Errorf("parsing supabase config from prefix [%s]: %w", prefix, err)
 	}
-
-	return NewFromConfig(cfg)
+	return NewFromConfig(Config{URL: lc.URL, Key: lc.Key})
 }
 
 // NewFromConfig creates a new Supabase client from a pre-loaded Config.

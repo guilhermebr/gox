@@ -1,35 +1,26 @@
 package supabase
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"net/url"
+)
 
-// Config represents the configuration options for connecting to a Supabase database.
+// Config is the SUPABASE config section: BILLING_SUPABASE_* under a service
+// prefixed BILLING.
 type Config struct {
-	URL string `conf:"env:SUPABASE_URL,required"`
-	Key string `conf:"env:SUPABASE_KEY,required"`
+	URL string `conf:"required,help:project URL such as https://xyz.supabase.co"`
+	Key string `conf:"required,mask,help:anon or service role key"`
 }
 
-// IsConfigured returns true when both URL and Key contain
-// non-empty, non-placeholder values (e.g. not "your-url-here").
-func (c Config) IsConfigured() bool {
-	url := strings.TrimSpace(c.URL)
-	key := strings.TrimSpace(c.Key)
-
-	if url == "" || key == "" {
-		return false
+// Validate checks the URL is absolute.
+func (c *Config) Validate() error {
+	u, err := url.Parse(c.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("SUPABASE_URL must be an absolute http(s) URL, got %q", c.URL)
 	}
-
-	placeholders := []string{
-		"your-url-here",
-		"your-key-here",
-		"<url>",
-		"<key>",
-		"TODO",
+	if c.Key == "" {
+		return errors.New("SUPABASE_KEY is required")
 	}
-	for _, p := range placeholders {
-		if strings.EqualFold(url, p) || strings.EqualFold(key, p) {
-			return false
-		}
-	}
-
-	return true
+	return nil
 }
