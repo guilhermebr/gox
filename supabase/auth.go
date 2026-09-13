@@ -10,12 +10,13 @@ import (
 	supabase "github.com/supabase-community/supabase-go"
 )
 
+// ErrNilClient is returned by the auth helpers when called with a nil client.
 var ErrNilClient = errors.New("supabase client is nil")
 
 // SignUpWithEmail registers a new user with email and password.
 // metadata is optional user metadata attached to the account.
 // Returns the new user's ID.
-func SignUpWithEmail(_ context.Context, client *supabase.Client, email, password string, metadata map[string]interface{}) (string, error) {
+func SignUpWithEmail(_ context.Context, client *supabase.Client, email, password string, metadata map[string]any) (string, error) {
 	if client == nil {
 		return "", ErrNilClient
 	}

@@ -1,5 +1,6 @@
 package monetary
 
+// Well-known cryptocurrency assets.
 var (
 	BTC   = NewAsset("BTC", 8, "BTC", "cryptocurrency")
 	ETH   = NewAsset("ETH", 18, "ETH", "cryptocurrency")

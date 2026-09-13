@@ -34,7 +34,7 @@ type InstrumentedTx struct {
 }
 
 // Query executes a query with instrumentation
-func (c *InstrumentedConn) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (c *InstrumentedConn) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	start := time.Now()
 	rows, err := c.Conn.Query(ctx, sql, args...)
 	duration := time.Since(start)
@@ -48,7 +48,7 @@ func (c *InstrumentedConn) Query(ctx context.Context, sql string, args ...interf
 // QueryRow executes a single-row query with instrumentation.
 // Note: QueryRow errors are not captured until Scan() is called on the returned Row.
 // Only query execution time is recorded here; scan errors must be handled separately.
-func (c *InstrumentedConn) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (c *InstrumentedConn) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	start := time.Now()
 	row := c.Conn.QueryRow(ctx, sql, args...)
 	duration := time.Since(start)
@@ -60,7 +60,7 @@ func (c *InstrumentedConn) QueryRow(ctx context.Context, sql string, args ...int
 }
 
 // Exec executes a query with instrumentation
-func (c *InstrumentedConn) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+func (c *InstrumentedConn) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	start := time.Now()
 	result, err := c.Conn.Exec(ctx, sql, args...)
 	duration := time.Since(start)
@@ -86,7 +86,7 @@ func (c *InstrumentedConn) Begin(ctx context.Context) (pgx.Tx, error) {
 }
 
 // Query executes a query within a transaction with instrumentation
-func (tx *InstrumentedTx) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (tx *InstrumentedTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	start := time.Now()
 	rows, err := tx.Tx.Query(ctx, sql, args...)
 	duration := time.Since(start)
@@ -100,7 +100,7 @@ func (tx *InstrumentedTx) Query(ctx context.Context, sql string, args ...interfa
 // QueryRow executes a single-row query within a transaction with instrumentation.
 // Note: QueryRow errors are not captured until Scan() is called on the returned Row.
 // Only query execution time is recorded here; scan errors must be handled separately.
-func (tx *InstrumentedTx) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (tx *InstrumentedTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	start := time.Now()
 	row := tx.Tx.QueryRow(ctx, sql, args...)
 	duration := time.Since(start)
@@ -112,7 +112,7 @@ func (tx *InstrumentedTx) QueryRow(ctx context.Context, sql string, args ...inte
 }
 
 // Exec executes a query within a transaction with instrumentation
-func (tx *InstrumentedTx) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+func (tx *InstrumentedTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	start := time.Now()
 	result, err := tx.Tx.Exec(ctx, sql, args...)
 	duration := time.Since(start)
@@ -158,7 +158,7 @@ func NewQueryExecutor(pool *DatabasePool) *QueryExecutor {
 }
 
 // QueryWithInstrumentation executes a query with automatic instrumentation
-func (qe *QueryExecutor) QueryWithInstrumentation(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (qe *QueryExecutor) QueryWithInstrumentation(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	start := time.Now()
 	rows, err := qe.pool.Query(ctx, sql, args...)
 	duration := time.Since(start)
@@ -172,7 +172,7 @@ func (qe *QueryExecutor) QueryWithInstrumentation(ctx context.Context, sql strin
 // QueryRowWithInstrumentation executes a single-row query with automatic instrumentation.
 // Note: QueryRow errors are not captured until Scan() is called on the returned Row.
 // Only query execution time is recorded here; scan errors must be handled separately.
-func (qe *QueryExecutor) QueryRowWithInstrumentation(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (qe *QueryExecutor) QueryRowWithInstrumentation(ctx context.Context, sql string, args ...any) pgx.Row {
 	start := time.Now()
 	row := qe.pool.QueryRow(ctx, sql, args...)
 	duration := time.Since(start)
@@ -184,7 +184,7 @@ func (qe *QueryExecutor) QueryRowWithInstrumentation(ctx context.Context, sql st
 }
 
 // ExecWithInstrumentation executes a query with automatic instrumentation
-func (qe *QueryExecutor) ExecWithInstrumentation(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+func (qe *QueryExecutor) ExecWithInstrumentation(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	start := time.Now()
 	result, err := qe.pool.Exec(ctx, sql, args...)
 	duration := time.Since(start)

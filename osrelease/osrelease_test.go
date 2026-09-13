@@ -141,7 +141,7 @@ NAME="Test=OS"`,
 			// Create temp file
 			tmpDir := t.TempDir()
 			tmpFile := filepath.Join(tmpDir, "os-release")
-			if err := os.WriteFile(tmpFile, []byte(tt.content), 0644); err != nil {
+			if err := os.WriteFile(tmpFile, []byte(tt.content), 0o644); err != nil {
 				t.Fatalf("failed to create temp file: %v", err)
 			}
 

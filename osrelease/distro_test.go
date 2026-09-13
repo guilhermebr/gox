@@ -337,7 +337,7 @@ ID_LIKE=debian
 PRETTY_NAME="Ubuntu 22.04.3 LTS"
 VERSION_ID="22.04"`
 
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 

@@ -19,11 +19,14 @@ import (
 	"strings"
 )
 
+// Monetary is an exact amount of an Asset, stored as an integer in the asset's
+// smallest unit (e.g. cents for USD, satoshi for BTC). All arithmetic is exact.
 type Monetary struct {
 	Asset  Asset    `json:"asset"`
 	Amount *big.Int `json:"amount"`
 }
 
+// String renders the asset and the amount with the asset's decimal precision.
 func (m Monetary) String() string {
 	if m.Amount == nil {
 		return fmt.Sprintf("[%s nil]", m.Asset.String())
@@ -32,8 +35,11 @@ func (m Monetary) String() string {
 	return fmt.Sprintf("[%s %s]", m.Asset.String(), m.FormatAmount())
 }
 
+// GetAsset returns the asset this amount is denominated in.
 func (m Monetary) GetAsset() Asset { return m.Asset }
 
+// NewMonetary creates an amount in the asset's smallest unit. It rejects nil
+// and negative amounts.
 func NewMonetary(asset Asset, amount *big.Int) (*Monetary, error) {
 	if amount == nil {
 		return nil, ErrNilAmount
@@ -44,6 +50,8 @@ func NewMonetary(asset Asset, amount *big.Int) (*Monetary, error) {
 	return &Monetary{Asset: asset, Amount: new(big.Int).Set(amount)}, nil
 }
 
+// NewMonetaryFromString parses a decimal string such as "100.50" using the
+// asset's precision.
 func NewMonetaryFromString(asset Asset, amountStr string) (*Monetary, error) {
 	if amountStr == "" {
 		return nil, fmt.Errorf("amount string cannot be empty")
@@ -58,6 +66,7 @@ func NewMonetaryFromString(asset Asset, amountStr string) (*Monetary, error) {
 	return NewMonetaryFromDecimal(asset, decimal), nil
 }
 
+// ValidateMonetary reports whether mon has a non-nil, non-negative amount.
 func ValidateMonetary(mon Monetary) error {
 	if mon.Amount == nil {
 		return ErrNilAmount
@@ -68,6 +77,7 @@ func ValidateMonetary(mon Monetary) error {
 	return nil
 }
 
+// Add returns m + other. Both must share the same asset.
 func (m *Monetary) Add(other *Monetary) (*Monetary, error) {
 	if m.Asset.Asset != other.Asset.Asset {
 		return nil, fmt.Errorf("cannot add different assets: %s and %s", m.Asset.Asset, other.Asset.Asset)
@@ -76,6 +86,8 @@ func (m *Monetary) Add(other *Monetary) (*Monetary, error) {
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
 }
 
+// Subtract returns m - other. Both must share the same asset and the result
+// must not be negative.
 func (m *Monetary) Subtract(other *Monetary) (*Monetary, error) {
 	if m.Asset.Asset != other.Asset.Asset {
 		return nil, fmt.Errorf("cannot subtract different assets: %s and %s", m.Asset.Asset, other.Asset.Asset)
@@ -87,6 +99,7 @@ func (m *Monetary) Subtract(other *Monetary) (*Monetary, error) {
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
 }
 
+// Multiply returns m scaled by an integer factor.
 func (m *Monetary) Multiply(factor *big.Int) (*Monetary, error) {
 	if factor == nil {
 		return nil, fmt.Errorf("factor cannot be nil")
@@ -98,6 +111,8 @@ func (m *Monetary) Multiply(factor *big.Int) (*Monetary, error) {
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
 }
 
+// Divide returns m divided by an integer divisor, truncating toward zero.
+// It returns ErrDivisionByZero for a zero divisor.
 func (m *Monetary) Divide(divisor *big.Int) (*Monetary, error) {
 	if divisor == nil {
 		return nil, fmt.Errorf("divisor cannot be nil")
@@ -112,10 +127,12 @@ func (m *Monetary) Divide(divisor *big.Int) (*Monetary, error) {
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
 }
 
+// IsZero reports whether the amount is exactly zero.
 func (m *Monetary) IsZero() bool {
 	return m.Amount != nil && m.Amount.Sign() == 0
 }
 
+// FormatAmount renders the amount as a decimal string using the asset's precision.
 func (m *Monetary) FormatAmount() string {
 	if m.Amount == nil {
 		return "nil"
@@ -130,6 +147,7 @@ func (m *Monetary) FormatAmount() string {
 	return decimal.Text('f', m.Asset.Precision)
 }
 
+// FindAssetBySymbol looks up a well-known asset by its display symbol.
 func FindAssetBySymbol(symbol string) (Asset, bool) {
 	// Create a registry of all known assets
 	allAssets := []Asset{
@@ -147,6 +165,7 @@ func FindAssetBySymbol(symbol string) (Asset, bool) {
 	return Asset{}, false
 }
 
+// FindAssetByName looks up a well-known asset by its name, e.g. "USD".
 func FindAssetByName(name string) (Asset, bool) {
 	// Create a registry of all known assets
 	allAssets := []Asset{
@@ -164,10 +183,12 @@ func FindAssetByName(name string) (Asset, bool) {
 	return Asset{}, false
 }
 
+// Equal reports whether both amounts have the same asset and value.
 func (m *Monetary) Equal(other *Monetary) bool {
 	return m.Asset.Asset == other.Asset.Asset && m.Amount.Cmp(other.Amount) == 0
 }
 
+// GreaterThan reports whether m > other. Both must share the same asset.
 func (m *Monetary) GreaterThan(other *Monetary) (bool, error) {
 	if m.Asset.Asset != other.Asset.Asset {
 		return false, fmt.Errorf("cannot compare different assets: %s and %s", m.Asset.Asset, other.Asset.Asset)
@@ -175,6 +196,7 @@ func (m *Monetary) GreaterThan(other *Monetary) (bool, error) {
 	return m.Amount.Cmp(other.Amount) > 0, nil
 }
 
+// LessThan reports whether m < other. Both must share the same asset.
 func (m *Monetary) LessThan(other *Monetary) (bool, error) {
 	if m.Asset.Asset != other.Asset.Asset {
 		return false, fmt.Errorf("cannot compare different assets: %s and %s", m.Asset.Asset, other.Asset.Asset)
@@ -182,10 +204,12 @@ func (m *Monetary) LessThan(other *Monetary) (bool, error) {
 	return m.Amount.Cmp(other.Amount) < 0, nil
 }
 
+// Zero returns a zero amount of the given asset.
 func Zero(asset Asset) *Monetary {
 	return &Monetary{Asset: asset, Amount: big.NewInt(0)}
 }
 
+// MarshalJSON encodes the amount as {"asset": ..., "amount": "<decimal string>"}.
 func (m *Monetary) MarshalJSON() ([]byte, error) {
 	type monetaryJSON struct {
 		Asset  Asset  `json:"asset"`
@@ -203,6 +227,7 @@ func (m *Monetary) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON decodes the representation produced by MarshalJSON.
 func (m *Monetary) UnmarshalJSON(data []byte) error {
 	type monetaryJSON struct {
 		Asset  Asset  `json:"asset"`
@@ -229,6 +254,8 @@ func (m *Monetary) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ToDecimal converts the amount to a big.Float in whole units. Prefer the
+// exact integer API for arithmetic; use this for display and interop only.
 func (m *Monetary) ToDecimal() *big.Float {
 	if m.Amount == nil {
 		return nil
@@ -246,6 +273,8 @@ func (m *Monetary) ToDecimal() *big.Float {
 	return amountFloat
 }
 
+// NewMonetaryFromDecimal converts a whole-unit big.Float into an amount,
+// truncating any precision beyond the asset's.
 func NewMonetaryFromDecimal(asset Asset, decimal *big.Float) *Monetary {
 	if decimal == nil {
 		return &Monetary{Asset: asset, Amount: nil}
@@ -261,6 +290,7 @@ func NewMonetaryFromDecimal(asset Asset, decimal *big.Float) *Monetary {
 	return &Monetary{Asset: asset, Amount: amount}
 }
 
+// Copy returns an independent copy of m.
 func (m *Monetary) Copy() *Monetary {
 	return &Monetary{
 		Asset:  m.Asset,
@@ -268,10 +298,14 @@ func (m *Monetary) Copy() *Monetary {
 	}
 }
 
+// Error is the error type returned by this package; values are comparable
+// with errors.Is.
 type Error string
 
+// Error implements the error interface.
 func (e Error) Error() string { return string(e) }
 
+// Errors returned by the monetary operations.
 const (
 	ErrNilAmount      Error = "amount cannot be nil"
 	ErrNegativeAmount Error = "amount cannot be negative"

@@ -160,10 +160,10 @@ func (db *DatabasePool) GetMetrics() *DatabaseMetrics {
 }
 
 // GetStats returns detailed connection pool statistics
-func (db *DatabasePool) GetStats() map[string]interface{} {
+func (db *DatabasePool) GetStats() map[string]any {
 	stats := db.Stat()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_conns":                stats.TotalConns(),
 		"acquired_conns":             stats.AcquiredConns(),
 		"idle_conns":                 stats.IdleConns(),
@@ -178,7 +178,7 @@ func (db *DatabasePool) GetStats() map[string]interface{} {
 		"max_lifetime_destroy_count": stats.MaxLifetimeDestroyCount(),
 
 		// Configuration
-		"config": map[string]interface{}{
+		"config": map[string]any{
 			"min_pool_size":       db.config.DatabasePoolMinSize,
 			"max_pool_size":       db.config.DatabasePoolMaxSize,
 			"max_conn_lifetime":   db.config.DatabaseMaxConnLifetime.String(),

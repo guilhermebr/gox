@@ -14,8 +14,8 @@ type UserInfo struct {
 	EmailConfirmed bool
 	PhoneConfirmed bool
 	Role           string
-	UserMetadata   map[string]interface{}
-	AppMetadata    map[string]interface{}
+	UserMetadata   map[string]any
+	AppMetadata    map[string]any
 	LastSignInAt   *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

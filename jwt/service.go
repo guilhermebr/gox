@@ -80,7 +80,6 @@ func (s Service) ValidateToken(tokenString string) (*Claims, error) {
 		}
 		return s.secretKey, nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}

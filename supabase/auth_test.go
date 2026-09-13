@@ -85,10 +85,10 @@ func TestUserInfoFromSDK_BasicConversion(t *testing.T) {
 		Role:             "authenticated",
 		EmailConfirmedAt: &emailConfirmed,
 		PhoneConfirmedAt: nil,
-		UserMetadata: map[string]interface{}{
+		UserMetadata: map[string]any{
 			"name": "Test User",
 		},
-		AppMetadata: map[string]interface{}{
+		AppMetadata: map[string]any{
 			"provider": "email",
 		},
 		LastSignInAt: &lastSignIn,

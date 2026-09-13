@@ -362,11 +362,11 @@ func TestMonetaryDivide(t *testing.T) {
 func TestMonetaryComparison(t *testing.T) {
 	usd100, _ := NewMonetaryFromString(USD, "100.00")
 	usd50, _ := NewMonetaryFromString(USD, "50.00")
-	usd100_copy, _ := NewMonetaryFromString(USD, "100.00")
+	usd100Copy, _ := NewMonetaryFromString(USD, "100.00")
 	gbp100, _ := NewMonetaryFromString(GBP, "100.00")
 
 	// Test Equal
-	if !usd100.Equal(usd100_copy) {
+	if !usd100.Equal(usd100Copy) {
 		t.Errorf("expected equal amounts to be equal")
 	}
 
@@ -558,17 +558,17 @@ func TestMonetaryJSON(t *testing.T) {
 
 func TestMonetaryCopy(t *testing.T) {
 	usd100, _ := NewMonetaryFromString(USD, "100.50")
-	copy := usd100.Copy()
+	clone := usd100.Copy()
 
-	if !usd100.Equal(copy) {
-		t.Errorf("copy should be equal to original")
+	if !usd100.Equal(clone) {
+		t.Errorf("clone should be equal to original")
 	}
 
 	// Modify original to ensure independence
 	usd100.Amount.Add(usd100.Amount, big.NewInt(100))
 
-	if usd100.Equal(copy) {
-		t.Errorf("copy should be independent of original")
+	if usd100.Equal(clone) {
+		t.Errorf("clone should be independent of original")
 	}
 }
 

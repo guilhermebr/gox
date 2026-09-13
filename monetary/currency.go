@@ -1,5 +1,6 @@
 package monetary
 
+// Well-known fiat currency assets.
 var (
 	BRL = NewAsset("BRL", 2, "R$", "currency")
 	USD = NewAsset("USD", 2, "$", "currency")
