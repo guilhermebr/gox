@@ -198,3 +198,20 @@ func TestMapAppliesMappersUntilOneProducesAGoxError(t *testing.T) {
 		t.Fatal("Map(nil) must be nil")
 	}
 }
+
+func TestWithHTTPStatusOverridesOnlyTheStatus(t *testing.T) {
+	err := errors.InvalidArgument("too big").WithHTTPStatus(http.StatusRequestEntityTooLarge)
+	if errors.HTTPStatus(err) != http.StatusRequestEntityTooLarge {
+		t.Fatalf("HTTPStatus = %d", errors.HTTPStatus(err))
+	}
+	if errors.HTTPStatus(fmt.Errorf("wrapped: %w", err)) != http.StatusRequestEntityTooLarge {
+		t.Fatal("override must survive wrapping")
+	}
+	status, env := errors.ToEnvelope(err, "")
+	if status != http.StatusRequestEntityTooLarge || env.Code != "invalid_argument" {
+		t.Fatalf("status=%d code=%s", status, env.Code)
+	}
+	if errors.HTTPStatus(errors.InvalidArgument("plain")) != http.StatusBadRequest {
+		t.Fatal("errors without an override keep the code's status")
+	}
+}

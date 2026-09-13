@@ -106,6 +106,7 @@ type Error struct {
 	msg     string
 	details map[string]any
 	cause   error
+	status  int // optional HTTP status override
 }
 
 // New creates an Error with a code and a public-safe message.
@@ -150,6 +151,15 @@ func (e *Error) WithDetail(key string, value any) *Error {
 	return &c
 }
 
+// WithHTTPStatus returns a copy that renders with a specific HTTP status
+// instead of the code's default, for the few HTTP-only cases such as 413.
+// The code and envelope are unchanged.
+func (e *Error) WithHTTPStatus(status int) *Error {
+	c := *e
+	c.status = status
+	return &c
+}
+
 // Error renders the message and, when present, the cause. This form is for
 // logs; use Message for anything client-facing.
 func (e *Error) Error() string {
@@ -182,6 +192,9 @@ func CodeOf(err error) Code {
 
 // HTTPStatus returns the HTTP status err renders as.
 func HTTPStatus(err error) int {
+	if e, ok := stderrors.AsType[*Error](err); ok && e.status != 0 {
+		return e.status
+	}
 	return CodeOf(err).HTTPStatus()
 }
 
@@ -202,7 +215,7 @@ func ToEnvelope(err error, requestID string) (int, Envelope) {
 	if e, ok := stderrors.AsType[*Error](err); ok {
 		env.Message = e.msg
 		env.Details = e.Details()
-		return code.HTTPStatus(), env
+		return HTTPStatus(err), env
 	}
 	switch code {
 	case CodeOK:
