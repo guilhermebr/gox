@@ -1,9 +1,10 @@
 # Contributing to gox
 
-Thanks for your interest in contributing! `gox` is a collection of small,
-independent Go modules. Each top-level directory (`http`, `jwt`, `logger`,
-`monetary`, `osrelease`, `postgres`, `supabase`) is its own module with its own
-`go.mod` and can be built, tested, and released independently.
+Thanks for your interest in contributing! `gox` is a multi-module repository:
+the root module (`github.com/guilhermebr/gox`) plus one module per feature
+package (`postgres`, `supabase`, `jwt`, `web`), the stdlib-only utilities
+(`monetary`, `osrelease`), the deprecated shims (`http`, `logger`) and
+`examples`. See `docs/decisions/0000-module-layout.md` for why.
 
 ## Getting started
 
@@ -12,33 +13,35 @@ git clone https://github.com/guilhermebr/gox
 cd gox
 ```
 
-There is no root module — run commands inside the module you're working on, or
-use the provided `Makefile` targets which iterate over every module.
+A `go.work` file ties the modules together for local development, so `go
+build` and `go test` work from any module directory. The `Makefile` targets
+iterate over every module; `make ci` is what CI runs.
 
 ## Development workflow
 
 Before opening a pull request, make sure the full check suite passes:
 
 ```bash
-make ci          # fmt-check + vet + lint + test-race across all modules
+make ci          # fmt-check + vet + lint + test + check-deps + check-lint-rules
 ```
 
-Individual targets are also available:
+Individual targets are also available (`make help` lists them):
 
 ```bash
-make fmt         # format all modules
-make test-race   # tests with the race detector
-make vet         # go vet
-make lint        # golangci-lint
-make gosec       # gosec security scan
-make vulncheck   # govulncheck
-make tidy        # go mod tidy
+make fmt              # gofumpt + goimports via golangci-lint
+make test             # tests with the race detector
+make test-integration # tests tagged `integration` (needs DATABASE_URL)
+make vet              # go vet
+make lint             # golangci-lint with the shared .golangci.yml
+make check-deps       # prove a root-only example links no feature dependency
+make check-lint-rules # prove the depguard dependency rules fire
+make vulncheck        # govulncheck
+make tidy             # go mod tidy in every module
 ```
 
-You'll need [`golangci-lint`](https://golangci-lint.run/),
-[`gosec`](https://github.com/securego/gosec), and
-[`govulncheck`](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) installed
-for the corresponding targets.
+You'll need Go 1.26+, [`golangci-lint`](https://golangci-lint.run/) v2, and
+[`govulncheck`](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) for the
+corresponding targets.
 
 ## Guidelines
 
@@ -48,8 +51,12 @@ for the corresponding targets.
   needs a godoc comment that starts with its name.
 - **Test your changes.** Add table-driven tests for new behavior; tests must
   pass with `-race`.
-- **Match the existing config pattern.** Configuration uses
-  `github.com/ardanlabs/conf/v3` with a `<PREFIX>_<MODULE>_*` environment layout.
+- **Respect the dependency direction.** `pkg/*` never imports the root or a
+  feature package; the root imports only `pkg/*`, stdlib, `ardanlabs/conf` and
+  OpenTelemetry; `monetary` and `osrelease` are stdlib only. `depguard` enforces
+  this; see `GOX_FRAMEWORK_PLAN.md` §2.
+- **Match the config pattern.** Configuration uses `github.com/ardanlabs/conf/v3`;
+  feature packages register a config section under the service prefix.
 - **Format before committing.** `make fmt` (or `gofmt -w .`).
 
 ## Pull requests
