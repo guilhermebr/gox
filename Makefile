@@ -54,6 +54,8 @@ vulncheck:
 check-deps:
 	@scripts/check-deps.sh examples/minimal absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/golang-jwt/jwt/v5 github.com/a-h/templ
 	@scripts/check-deps.sh examples/http absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/golang-jwt/jwt/v5 github.com/a-h/templ
+	@scripts/check-deps.sh examples/postgres present github.com/jackc/pgx/v5
+	@scripts/check-deps.sh examples/postgres absent github.com/supabase-community/supabase-go github.com/golang-jwt/jwt/v5 github.com/a-h/templ
 
 ## check-lint-rules: prove the depguard dependency rules fire on a planted violation
 check-lint-rules:
