@@ -10,4 +10,5 @@ use (
 	./osrelease
 	./postgres
 	./supabase
+	./web
 )

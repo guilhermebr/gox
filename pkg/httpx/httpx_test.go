@@ -184,3 +184,42 @@ func TestMappersRoundTripThroughContext(t *testing.T) {
 		t.Fatalf("Mappers = %d", len(got))
 	}
 }
+
+func TestErrorRendererHookReplacesTheEnvelope(t *testing.T) {
+	renderer := func(w http.ResponseWriter, r *http.Request, status int, env errors.Envelope) bool {
+		if r.Header.Get("Accept") != "text/html" {
+			return false
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte("<h1>" + env.Code + "</h1>"))
+		return true
+	}
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req = req.WithContext(httpx.WithErrorRenderer(req.Context(), renderer))
+
+	t.Run("html request gets the page", func(t *testing.T) {
+		req.Header.Set("Accept", "text/html")
+		rec := httptest.NewRecorder()
+		httpx.Error(rec, req, errors.NotFound("gone"))
+		if rec.Code != http.StatusNotFound || rec.Body.String() != "<h1>not_found</h1>" {
+			t.Fatalf("%d %s", rec.Code, rec.Body)
+		}
+	})
+	t.Run("renderer declines and the envelope is written", func(t *testing.T) {
+		req.Header.Set("Accept", "application/json")
+		rec := httptest.NewRecorder()
+		httpx.Error(rec, req, errors.NotFound("gone"))
+		if rec.Header().Get("Content-Type") != "application/json" || !strings.Contains(rec.Body.String(), `"code":"not_found"`) {
+			t.Fatalf("%s %s", rec.Header().Get("Content-Type"), rec.Body)
+		}
+	})
+	t.Run("WriteError is the entry point middleware uses", func(t *testing.T) {
+		req.Header.Set("Accept", "text/html")
+		rec := httptest.NewRecorder()
+		httpx.WriteError(rec, req, http.StatusServiceUnavailable, errors.Envelope{Code: "unavailable", Message: "draining"})
+		if rec.Body.String() != "<h1>unavailable</h1>" {
+			t.Fatalf("%s", rec.Body)
+		}
+	})
+}

@@ -164,7 +164,7 @@ func Handler(mux *http.ServeMux) http.Handler {
 			err = gerrors.NotFound("no route for %s %s", r.Method, r.URL.Path)
 		}
 		status, env := gerrors.ToEnvelope(err, log.RequestID(r.Context()))
-		httpx.WriteEnvelope(w, status, env)
+		httpx.WriteError(w, r, status, env)
 	})
 }
 

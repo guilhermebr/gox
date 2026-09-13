@@ -236,6 +236,12 @@ func (b *Builder) build() (*App, error) {
 		a.add(int(f.stage), c)
 	}
 
+	for _, fn := range b.finishes {
+		if err := fn(a); err != nil {
+			return nil, fmt.Errorf("gox: %w", err)
+		}
+	}
+
 	if !b.adminDisabled {
 		srv := admin.New(admin.Config{Addr: base.Admin.Addr}, a.health,
 			admin.Info{Service: base.ServiceName, Version: base.Version},

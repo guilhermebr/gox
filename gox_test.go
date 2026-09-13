@@ -485,3 +485,37 @@ func TestBuilderSetupRunsAfterConfigAndBeforeFactories(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestBuilderFinishRunsAfterFactories(t *testing.T) {
+	setArgs(t)
+	var order []string
+	feature := func(b *gox.Builder) error {
+		b.Finish(func(a *gox.App) error {
+			order = append(order, "finish")
+			_ = a.Mux() // HTTP() may be declared after this feature; Finish still sees the mux
+			return nil
+		})
+		return nil
+	}
+	ev := &events{}
+	probe := func(b *gox.Builder) error {
+		b.Component(gox.StageDatastore, func(*gox.App) (lifecycle.Component, error) {
+			order = append(order, "factory")
+			return &userComponent{name: "x", events: ev}, nil
+		})
+		return nil
+	}
+	if _, err := gox.New("billing", base(feature, probe, gox.HTTP())...); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(order, ",") != "factory,finish" {
+		t.Fatalf("order = %v", order)
+	}
+	failing := func(b *gox.Builder) error {
+		b.Finish(func(*gox.App) error { return errors.New("no mux for you") })
+		return nil
+	}
+	if _, err := gox.New("billing", base(failing)...); err == nil || !strings.Contains(err.Error(), "no mux for you") {
+		t.Fatalf("err = %v", err)
+	}
+}

@@ -34,6 +34,7 @@ type Builder struct {
 	sections        []config.Section
 	factories       []factory
 	setups          []func(a *App) error
+	finishes        []func(a *App) error
 	values          map[any]any
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
@@ -81,6 +82,14 @@ func (b *Builder) Component(stage Stage, fn func(a *App) (lifecycle.Component, e
 // Component for anything that starts or stops.
 func (b *Builder) Setup(fn func(a *App) error) {
 	b.setups = append(b.setups, fn)
+}
+
+// Finish registers a function that runs at the end of New, after every
+// component factory. It is for features that decorate what another feature
+// built (web mounts onto the mux HTTP() created) without depending on the
+// order options were passed in.
+func (b *Builder) Finish(fn func(a *App) error) {
+	b.finishes = append(b.finishes, fn)
 }
 
 // Set stores a value feature packages expose through their From accessor.

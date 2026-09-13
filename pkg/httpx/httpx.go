@@ -24,6 +24,31 @@ func JSON(w http.ResponseWriter, status int, v any) error {
 	return json.NewEncoder(w).Encode(v)
 }
 
+// ErrorRenderer renders an error for requests that want something other
+// than the JSON envelope (an HTML page). It returns false to decline, in
+// which case the envelope is written.
+type ErrorRenderer func(w http.ResponseWriter, r *http.Request, status int, env errors.Envelope) bool
+
+type rendererKey struct{}
+
+// WithErrorRenderer stores a renderer in ctx. gox/web installs one so
+// framework rejections become error pages for browser requests.
+func WithErrorRenderer(ctx context.Context, fn ErrorRenderer) context.Context {
+	return context.WithValue(ctx, rendererKey{}, fn)
+}
+
+// WriteError renders an error response: the context's ErrorRenderer if one
+// accepts the request, otherwise the JSON envelope. Middleware and the
+// server wrapper use it for every rejection they produce.
+func WriteError(w http.ResponseWriter, r *http.Request, status int, env errors.Envelope) {
+	if fn, ok := r.Context().Value(rendererKey{}).(ErrorRenderer); ok && fn != nil {
+		if fn(w, r, status, env) {
+			return
+		}
+	}
+	WriteEnvelope(w, status, env)
+}
+
 // WriteEnvelope writes an error envelope with the given status.
 func WriteEnvelope(w http.ResponseWriter, status int, env errors.Envelope) {
 	w.Header().Set("Content-Type", "application/json")
@@ -47,7 +72,7 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 			slog.Int("status", status),
 			slog.String("code", env.Code))
 	}
-	WriteEnvelope(w, status, env)
+	WriteError(w, r, status, env)
 }
 
 // Decode reads a JSON body into v strictly: unknown fields, trailing data,

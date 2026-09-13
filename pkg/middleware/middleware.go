@@ -61,7 +61,7 @@ func Recovery(logger *slog.Logger) Middleware {
 					slog.String("path", r.URL.Path),
 					slog.String("stack", string(debug.Stack())))
 				status, env := errors.ToEnvelope(errors.Internal("internal error"), log.RequestID(r.Context()))
-				httpx.WriteEnvelope(w, status, env)
+				httpx.WriteError(w, r, status, env)
 			}()
 			next.ServeHTTP(w, r)
 		})
@@ -234,7 +234,7 @@ func Timeout(d time.Duration) Middleware {
 				tw.timedOut = true
 				tw.mu.Unlock()
 				status, env := errors.ToEnvelope(context.DeadlineExceeded, log.RequestID(ctx))
-				httpx.WriteEnvelope(w, status, env)
+				httpx.WriteError(w, r, status, env)
 			}
 		})
 	}
