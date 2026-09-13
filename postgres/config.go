@@ -1,95 +1,51 @@
 package postgres
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
-	"runtime"
 	"time"
 )
 
-// Config represents the configuration options for connecting to a Postgres database.
+// Config is the POSTGRES config section: BILLING_POSTGRES_URL and friends
+// under a service prefixed BILLING.
 type Config struct {
-	// Connection details
-	DatabaseName     string `conf:"env:DATABASE_NAME,required"`
-	DatabaseUser     string `conf:"env:DATABASE_USER,required"`
-	DatabasePassword string `conf:"env:DATABASE_PASSWORD,required,mask"`
-	DatabaseHost     string `conf:"env:DATABASE_HOST,default:localhost"`
-	DatabasePort     string `conf:"env:DATABASE_PORT,default:5432"`
-	DatabaseSSLMode  string `conf:"env:DATABASE_SSLMODE,default:disable"`
-
-	// Connection pooling settings
-	DatabasePoolMinSize       int32         `conf:"env:DATABASE_POOL_MIN_SIZE,default:5"`
-	DatabasePoolMaxSize       int32         `conf:"env:DATABASE_POOL_MAX_SIZE,default:25"`
-	DatabaseMaxConnLifetime   time.Duration `conf:"env:DATABASE_MAX_CONN_LIFETIME,default:1h"`
-	DatabaseMaxConnIdleTime   time.Duration `conf:"env:DATABASE_MAX_CONN_IDLE_TIME,default:15m"`
-	DatabaseHealthCheckPeriod time.Duration `conf:"env:DATABASE_HEALTH_CHECK_PERIOD,default:1m"`
-	DatabaseConnectTimeout    time.Duration `conf:"env:DATABASE_CONNECT_TIMEOUT,default:30s"`
-
-	// Performance settings
-	DatabaseStatementCacheCapacity int32 `conf:"env:DATABASE_STATEMENT_CACHE_CAPACITY,default:512"`
-
-	// Monitoring settings
-	DatabaseEnableMetrics bool `conf:"env:DATABASE_ENABLE_METRICS,default:true"`
+	URL               string        `conf:"required,mask,help:postgres://user:pass@host:5432/db?sslmode=require"`
+	MaxConns          int32         `conf:"default:10"`
+	MinConns          int32         `conf:"default:2"`
+	MaxConnLifetime   time.Duration `conf:"default:1h,help:jittered so a fleet does not recycle in lockstep"`
+	MaxConnIdleTime   time.Duration `conf:"default:15m"`
+	HealthCheckPeriod time.Duration `conf:"default:1m"`
+	ConnectTimeout    time.Duration `conf:"default:10s"`
+	Migrate           bool          `conf:"default:true,help:run embedded migrations at boot (WithMigrations)"`
 }
 
-// DefaultConfig returns a production-optimized database configuration.
-func DefaultConfig() Config {
-	// Calculate optimal pool size based on CPU cores: 4 connections per core,
-	// clamped to [10, 50]. Clamping first keeps the value well within int32.
-	maxConns := runtime.NumCPU() * 4
-	if maxConns < 10 {
-		maxConns = 10 // Minimum reasonable pool size
+// Validate checks the section after loading.
+func (c *Config) Validate() error {
+	var errs []error
+	if u, err := url.Parse(c.URL); err != nil || u.Scheme == "" || u.Host == "" {
+		errs = append(errs, fmt.Errorf("POSTGRES_URL must be a postgres:// URL, got %q", mask(c.URL)))
 	}
-	if maxConns > 50 {
-		maxConns = 50 // Maximum to prevent resource exhaustion
+	if c.MaxConns <= 0 {
+		errs = append(errs, fmt.Errorf("POSTGRES_MAX_CONNS must be > 0, got %d", c.MaxConns))
 	}
-	maxPoolSize := int32(maxConns) // #nosec G115 -- maxConns is clamped to [10, 50] above.
-
-	minPoolSize := maxPoolSize / 5 // 20% of max pool size
-	if minPoolSize < 2 {
-		minPoolSize = 2 // Minimum to ensure availability
+	if c.MinConns < 0 || c.MinConns > c.MaxConns {
+		errs = append(errs, fmt.Errorf("POSTGRES_MIN_CONNS must be between 0 and MAX_CONNS (%d), got %d", c.MaxConns, c.MinConns))
 	}
-
-	return Config{
-		DatabaseHost:                   "localhost",
-		DatabasePort:                   "5432",
-		DatabaseSSLMode:                "disable",
-		DatabasePoolMinSize:            minPoolSize,
-		DatabasePoolMaxSize:            maxPoolSize,
-		DatabaseMaxConnLifetime:        time.Hour,
-		DatabaseMaxConnIdleTime:        15 * time.Minute,
-		DatabaseHealthCheckPeriod:      time.Minute,
-		DatabaseConnectTimeout:         30 * time.Second,
-		DatabaseStatementCacheCapacity: 512,
-		DatabaseEnableMetrics:          true,
+	if c.MaxConnLifetime <= 0 {
+		errs = append(errs, fmt.Errorf("POSTGRES_MAX_CONN_LIFETIME must be > 0, got %v", c.MaxConnLifetime))
 	}
+	return errors.Join(errs...)
 }
 
-// ConnectionString returns the optimized postgres connection string.
-// Credentials are URL-escaped to handle special characters safely.
-func (c *Config) ConnectionString() string {
-	sslMode := c.DatabaseSSLMode
-	if sslMode == "" {
-		sslMode = "disable"
+// mask hides the password of a URL in error messages.
+func mask(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
 	}
-
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=%s&pool_min_conns=%d&pool_max_conns=%d&pool_max_conn_lifetime=%s&pool_max_conn_idle_time=%s&pool_health_check_period=%s&connect_timeout=%.0f&default_query_exec_mode=cache_statement",
-		url.QueryEscape(c.DatabaseUser), url.QueryEscape(c.DatabasePassword), c.DatabaseHost, c.DatabasePort, c.DatabaseName,
-		sslMode, c.DatabasePoolMinSize, c.DatabasePoolMaxSize,
-		c.DatabaseMaxConnLifetime, c.DatabaseMaxConnIdleTime, c.DatabaseHealthCheckPeriod, c.DatabaseConnectTimeout.Seconds(),
-	)
-}
-
-// DSN returns the Postgres Data Source Name (DSN) for use with pgxpool.
-func (c *Config) DSN() string {
-	sslMode := c.DatabaseSSLMode
-	if sslMode == "" {
-		sslMode = "disable"
+	if _, has := u.User.Password(); has {
+		u.User = url.UserPassword(u.User.Username(), "xxxxx")
 	}
-
-	return fmt.Sprintf(
-		"user=%s password=%s host=%s port=%s dbname=%s pool_min_conns=%d pool_max_conns=%d pool_max_conn_lifetime=%s pool_max_conn_idle_time=%s pool_health_check_period=%s connect_timeout=%.0f sslmode=%s",
-		c.DatabaseUser, c.DatabasePassword, c.DatabaseHost, c.DatabasePort, c.DatabaseName,
-		c.DatabasePoolMinSize, c.DatabasePoolMaxSize, c.DatabaseMaxConnLifetime, c.DatabaseMaxConnIdleTime, c.DatabaseHealthCheckPeriod, c.DatabaseConnectTimeout.Seconds(), sslMode)
+	return u.String()
 }
