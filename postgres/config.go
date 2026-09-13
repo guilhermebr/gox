@@ -34,15 +34,16 @@ type Config struct {
 
 // DefaultConfig returns a production-optimized database configuration.
 func DefaultConfig() Config {
-	// Calculate optimal pool size based on CPU cores
-	maxCores := runtime.NumCPU()
-	maxPoolSize := int32(maxCores * 4) // 4 connections per CPU core
-	if maxPoolSize < 10 {
-		maxPoolSize = 10 // Minimum reasonable pool size
+	// Calculate optimal pool size based on CPU cores: 4 connections per core,
+	// clamped to [10, 50]. Clamping first keeps the value well within int32.
+	maxConns := runtime.NumCPU() * 4
+	if maxConns < 10 {
+		maxConns = 10 // Minimum reasonable pool size
 	}
-	if maxPoolSize > 50 {
-		maxPoolSize = 50 // Maximum to prevent resource exhaustion
+	if maxConns > 50 {
+		maxConns = 50 // Maximum to prevent resource exhaustion
 	}
+	maxPoolSize := int32(maxConns) // #nosec G115 -- maxConns is clamped to [10, 50] above.
 
 	minPoolSize := maxPoolSize / 5 // 20% of max pool size
 	if minPoolSize < 2 {

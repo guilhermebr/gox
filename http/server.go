@@ -20,7 +20,7 @@ type Server struct {
 	config Config
 }
 
-// NewServer creates a new HTTP server
+// NewServerWithConfig creates a new HTTP server from a pre-loaded Config.
 func NewServerWithConfig(name string, handler http.Handler, cfg Config, logger *slog.Logger) *Server {
 	return &Server{
 		server: &http.Server{
@@ -37,6 +37,8 @@ func NewServerWithConfig(name string, handler http.Handler, cfg Config, logger *
 	}
 }
 
+// NewServer creates a new HTTP server, loading its Config from environment
+// variables prefixed with the uppercased name.
 func NewServer(name string, handler http.Handler, logger *slog.Logger) (*Server, error) {
 	cfg, err := LoadConfig(strings.ToUpper(name))
 	if err != nil {
@@ -63,22 +65,27 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// StartWithGracefulShutdown starts the server and handles graceful shutdown
+// StartWithGracefulShutdown starts the server and blocks until it receives
+// SIGINT/SIGTERM or the server fails to start. A start failure is returned to
+// the caller rather than terminating the process.
 func (s *Server) StartWithGracefulShutdown() error {
-	// Start server in a goroutine
+	// Start server in a goroutine; a start failure is surfaced via errCh.
+	errCh := make(chan error, 1)
 	go func() {
 		if err := s.Start(); err != nil {
-			s.logger.Error("server failed to start",
-				slog.String("error", err.Error()),
-			)
-			os.Exit(1)
+			errCh <- err
 		}
 	}()
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or a start failure.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-quit:
+	}
 
 	s.logger.Info("shutting down server")
 
@@ -126,16 +133,16 @@ func (sm *ServerManager) AddServer(server *Server) {
 	sm.servers = append(sm.servers, server)
 }
 
-// StartAll starts all managed servers with graceful shutdown handling
+// StartAll starts all managed servers and blocks until it receives
+// SIGINT/SIGTERM or any server fails to start. A start failure is returned to
+// the caller rather than terminating the process.
 func (sm *ServerManager) StartAll() error {
-	// Start all servers in separate goroutines
+	// Start all servers in separate goroutines; failures are surfaced via errCh.
+	errCh := make(chan error, len(sm.servers))
 	for _, server := range sm.servers {
 		go func(srv *Server) {
 			if err := srv.Start(); err != nil {
-				srv.logger.Error("server failed to start",
-					slog.String("error", err.Error()),
-				)
-				os.Exit(1)
+				errCh <- err
 			}
 		}(server)
 
@@ -143,10 +150,15 @@ func (sm *ServerManager) StartAll() error {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or a start failure.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-quit:
+	}
 
 	sm.logger.Info("shutting down all servers")
 

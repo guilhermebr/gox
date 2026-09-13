@@ -1,5 +1,9 @@
 # Gox
 
+[![CI](https://github.com/guilhermebr/gox/actions/workflows/ci.yml/badge.svg)](https://github.com/guilhermebr/gox/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/guilhermebr/gox.svg)](https://pkg.go.dev/github.com/guilhermebr/gox)
+
 Gox is a collection of Go modules that provide common functionality and utilities for Go applications. It aims to simplify common tasks and provide consistent patterns across different projects.
 
 ## Modules
@@ -85,11 +89,13 @@ The `postgres` module provides a simple way to create and manage PostgreSQL data
 ```go
 import "github.com/guilhermebr/gox/postgres"
 
-// Create a new database connection pool
-pool, err := postgres.New(ctx, "DB")
+// Create an optimized pool with monitoring (preferred).
+// postgres.New is still available but deprecated.
+pool, err := postgres.NewOptimized(ctx, "DB", logger)
 if err != nil {
     // Handle error
 }
+defer pool.Close()
 
 // Use the pool
 // pool.QueryRow(ctx, "SELECT * FROM users WHERE id = $1", userID)
@@ -168,9 +174,61 @@ if found {
 }
 ```
 
+### JWT
+
+The `jwt` module issues and validates HS256 JSON Web Tokens with a small, typed
+claim set (user ID, email, account type) on top of the standard registered claims.
+
+#### Features
+
+- HS256 token generation, validation, and refresh
+- Typed `Claims` (user ID, email, account type)
+- Sentinel errors (`ErrInvalidToken`, `ErrInvalidClaims`) for `errors.Is`
+- Environment-driven configuration (`JWT_SECRET_KEY` is **required** — no default)
+
+#### Usage
+
+```go
+import "github.com/guilhermebr/gox/jwt"
+
+// JWT_SECRET_KEY must be set in the environment.
+cfg, err := jwt.LoadConfig("APP")
+if err != nil {
+    // Handle error
+}
+svc := jwt.NewServiceFromConfig(cfg)
+
+token, err := svc.GenerateToken("user-id", "user@example.com", "admin")
+claims, err := svc.ValidateToken(token)
+```
+
+### OSRelease
+
+The `osrelease` module parses `/etc/os-release` (with a fallback to
+`/usr/lib/os-release`) and helps detect the Linux distribution and its family.
+
+#### Features
+
+- Parses standard `os-release` fields into a typed struct
+- Falls back from `/etc/os-release` to `/usr/lib/os-release`
+- Distribution family / package-manager detection helpers
+- No external dependencies
+
+#### Usage
+
+```go
+import "github.com/guilhermebr/gox/osrelease"
+
+info, err := osrelease.Read()
+if err != nil {
+    // Handle error
+}
+fmt.Println(info.ID, info.VersionID) // e.g. "ubuntu 22.04"
+```
+
 ## Configuration
 
-The Logger, Postgres, and Supabase modules use the `ardanlabs/conf` package for configuration management. Configuration can be provided through environment variables with the specified prefix. The Monetary module does not require external configuration.
+The Logger, HTTP, Postgres, Supabase, and JWT modules use the `ardanlabs/conf` package for configuration management. Configuration can be provided through environment variables with the specified prefix. The Monetary module does not require external configuration.
 
 ### Logger Configuration
 
@@ -195,10 +253,25 @@ The Logger, Postgres, and Supabase modules use the `ardanlabs/conf` package for 
 - `APP_SUPABASE_URL`: Supabase project URL
 - `APP_SUPABASE_KEY`: Supabase API key (anon or service role key)
 
+### JWT Configuration
+
+- `APP_JWT_SECRET_KEY`: Signing secret (**required**, no default)
+- `APP_JWT_ISSUER`: Token issuer (default: `go-app`)
+- `APP_JWT_EXPIRY`: Token lifetime as a Go duration (default: `24h`)
+
 ## Installation
 
+`gox` is a multi-module repository — each module is versioned and imported
+independently. Install only what you need:
+
 ```bash
-go get github.com/guilhermebr/gox
+go get github.com/guilhermebr/gox/logger
+go get github.com/guilhermebr/gox/http
+go get github.com/guilhermebr/gox/postgres
+go get github.com/guilhermebr/gox/supabase
+go get github.com/guilhermebr/gox/monetary
+go get github.com/guilhermebr/gox/jwt
+go get github.com/guilhermebr/gox/osrelease
 ```
 
 ## Contributing

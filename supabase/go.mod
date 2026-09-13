@@ -1,8 +1,6 @@
 module github.com/guilhermebr/gox/supabase
 
-go 1.23.0
-
-toolchain go1.24.2
+go 1.24.3
 
 require (
 	github.com/ardanlabs/conf/v3 v3.8.0

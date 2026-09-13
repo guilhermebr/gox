@@ -18,15 +18,15 @@ const (
 // OSRelease contains parsed /etc/os-release data.
 // See https://www.freedesktop.org/software/systemd/man/os-release.html
 type OSRelease struct {
-	ID            string // Lowercase identifier (e.g., "ubuntu", "debian", "fedora")
-	IDLike        string // Space-separated list of related OS IDs (e.g., "debian ubuntu")
-	Name          string // Human-readable OS name (e.g., "Ubuntu")
-	Version       string // Version string (e.g., "22.04.3 LTS (Jammy Jellyfish)")
-	VersionID     string // Version identifier (e.g., "22.04")
-	PrettyName    string // Pretty name (e.g., "Ubuntu 22.04.3 LTS")
-	HomeURL       string // OS home page URL
-	SupportURL    string // OS support URL
-	BugReportURL  string // OS bug report URL
+	ID              string // Lowercase identifier (e.g., "ubuntu", "debian", "fedora")
+	IDLike          string // Space-separated list of related OS IDs (e.g., "debian ubuntu")
+	Name            string // Human-readable OS name (e.g., "Ubuntu")
+	Version         string // Version string (e.g., "22.04.3 LTS (Jammy Jellyfish)")
+	VersionID       string // Version identifier (e.g., "22.04")
+	PrettyName      string // Pretty name (e.g., "Ubuntu 22.04.3 LTS")
+	HomeURL         string // OS home page URL
+	SupportURL      string // OS support URL
+	BugReportURL    string // OS bug report URL
 	VersionCodename string // Version codename (e.g., "jammy")
 }
 
@@ -48,11 +48,12 @@ func Read() (*OSRelease, error) {
 
 // ReadFile parses an os-release file from the specified path.
 func ReadFile(path string) (*OSRelease, error) {
+	// #nosec G304 -- reading a caller-supplied path is the documented purpose of this function.
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	release := &OSRelease{}
 	scanner := bufio.NewScanner(file)

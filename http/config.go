@@ -7,6 +7,7 @@ import (
 	"github.com/ardanlabs/conf/v3"
 )
 
+// Config holds the HTTP server settings, populated from environment variables.
 type Config struct {
 	Address           string        `conf:"env:ADDRESS,default:0.0.0.0:3000"`
 	ReadHeaderTimeout time.Duration `conf:"env:READ_HEADER_TIMEOUT,default:60s"`
@@ -16,6 +17,7 @@ type Config struct {
 	ShutdownTimeout   time.Duration `conf:"env:SHUTDOWN_TIMEOUT,default:20s"`
 }
 
+// LoadConfig loads the HTTP Config from environment variables prefixed with prefix.
 func LoadConfig(prefix string) (Config, error) {
 	var cfg Config
 

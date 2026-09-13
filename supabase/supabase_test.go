@@ -1,7 +1,6 @@
 package supabase
 
 import (
-	"os"
 	"testing"
 )
 
@@ -56,23 +55,10 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save current environment and restore after test
-			oldEnv := make(map[string]string)
+			// t.Setenv sets the variable for the test and restores it on cleanup.
 			for k, v := range tt.envVars {
-				if oldVal, exists := os.LookupEnv(k); exists {
-					oldEnv[k] = oldVal
-				}
-				os.Setenv(k, v)
+				t.Setenv(k, v)
 			}
-			defer func() {
-				for k := range tt.envVars {
-					if oldVal, exists := oldEnv[k]; exists {
-						os.Setenv(k, oldVal)
-					} else {
-						os.Unsetenv(k)
-					}
-				}
-			}()
 
 			client, err := New(tt.prefix)
 			if tt.wantErr {

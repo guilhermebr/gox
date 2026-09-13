@@ -9,6 +9,8 @@ import (
 	"github.com/ardanlabs/conf/v3"
 )
 
+// NewLogger builds a *slog.Logger from environment variables prefixed with
+// prefix and installs it as the slog default.
 func NewLogger(prefix string) (*slog.Logger, error) {
 	var cfg Config
 
@@ -20,6 +22,8 @@ func NewLogger(prefix string) (*slog.Logger, error) {
 	return NewLoggerConfig(cfg)
 }
 
+// NewLoggerConfig builds a *slog.Logger from a pre-loaded Config and installs it
+// as the slog default.
 func NewLoggerConfig(cfg Config) (*slog.Logger, error) {
 	logOutput := os.Stdout
 	if cfg.Stderr {
