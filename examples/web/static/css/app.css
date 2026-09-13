@@ -1,0 +1,12 @@
+:root { font-family: system-ui, sans-serif; line-height: 1.5; }
+body { margin: 0; max-width: 40rem; padding: 1rem; }
+header { display: flex; gap: 1rem; align-items: baseline; margin-bottom: 1.5rem; }
+header a { font-weight: 600; text-decoration: none; color: inherit; }
+label { display: block; margin: 0.75rem 0; }
+input[type="text"] { display: block; width: 100%; padding: 0.4rem; margin-top: 0.25rem; }
+button { padding: 0.5rem 1rem; }
+.flash { padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+.flash-success { background: #e6f4ea; color: #1e4620; }
+.flash-error { background: #fdecea; color: #611a15; }
+.field-error { display: block; color: #b3261e; font-size: 0.9rem; }
+.error h1 { font-size: 3rem; margin: 0; }

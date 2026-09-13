@@ -1,0 +1,52 @@
+package views
+
+import (
+	"fmt"
+
+	"github.com/guilhermebr/gox/web"
+)
+
+// Layout is the one shell every page renders in. It takes the request's
+// Page and the body; pages never build <html> themselves.
+func Layout(page *web.Page, body templ.Component) templ.Component {
+	return layout(page, body)
+}
+
+templ layout(page *web.Page, body templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ page.Title } · gox web example</title>
+			@web.CSRFMeta(page)
+			<link rel="stylesheet" href={ page.Asset("css/app.css") }/>
+		</head>
+		<body>
+			<header>
+				<a href="/">Guestbook</a>
+				<nav><a href="/sign">Sign</a></nav>
+			</header>
+			for _, f := range page.Flashes {
+				<div class={ "flash", "flash-" + f.Kind } role="status">{ f.Message }</div>
+			}
+			<main>
+				@body
+			</main>
+		</body>
+	</html>
+}
+
+// ErrorPage renders framework and handler errors for browser requests.
+func ErrorPage(page *web.Page, status int, code, message string) templ.Component {
+	page.Title = fmt.Sprint(status)
+	return errorPage(status, message)
+}
+
+templ errorPage(status int, message string) {
+	<section class="error">
+		<h1>{ fmt.Sprint(status) }</h1>
+		<p>{ message }</p>
+		<p><a href="/">Back to the guestbook</a></p>
+	</section>
+}

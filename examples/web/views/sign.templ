@@ -1,0 +1,33 @@
+package views
+
+import "github.com/guilhermebr/gox/web"
+
+// SignInput is what the form decodes into; the tags drive validation.
+type SignInput struct {
+	Name  string `form:"name,required,min=2,max=40"`
+	Agree bool   `form:"agree,required"`
+}
+
+// SignForm renders the form, with errors keyed by field when re-rendered
+// after a failed POST.
+templ SignForm(page *web.Page, in SignInput, errs web.FieldErrors) {
+	<h1>Sign the guestbook</h1>
+	<form method="post" action="/sign">
+		@web.CSRFField(page)
+		<label>
+			Your name
+			<input type="text" name="name" value={ in.Name } autofocus/>
+			if msg, ok := errs["name"]; ok {
+				<span class="field-error">{ msg }</span>
+			}
+		</label>
+		<label>
+			<input type="checkbox" name="agree" checked?={ in.Agree }/>
+			I am a real person
+			if msg, ok := errs["agree"]; ok {
+				<span class="field-error">{ msg }</span>
+			}
+		</label>
+		<button type="submit">Sign</button>
+	</form>
+}

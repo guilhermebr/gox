@@ -1,0 +1,15 @@
+package views
+
+// Home lists the names signed so far. Pages take explicit typed parameters.
+templ Home(names []string) {
+	<h1>Guestbook</h1>
+	if len(names) == 0 {
+		<p>Nobody has signed yet. <a href="/sign">Be the first.</a></p>
+	} else {
+		<ul>
+			for _, n := range names {
+				<li>{ n }</li>
+			}
+		</ul>
+	}
+}
