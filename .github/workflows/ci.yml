@@ -9,13 +9,18 @@ on:
 permissions:
   contents: read
 
+env:
+  GO_VERSION: "1.26.x"
+  GOLANGCI_LINT_VERSION: v2.11.4
+
 jobs:
-  test:
+  modules:
+    name: ${{ matrix.module }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        module: [http, jwt, logger, monetary, osrelease, postgres, supabase]
+        module: [., examples, http, jwt, logger, monetary, osrelease, postgres, supabase]
     defaults:
       run:
         working-directory: ${{ matrix.module }}
@@ -24,11 +29,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.x"
-          cache-dependency-path: ${{ matrix.module }}/go.sum
-
-      - name: gofmt
-        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
 
       - name: go vet
         run: go vet ./...
@@ -37,7 +39,25 @@ jobs:
         run: go test ./... -race -count=1
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
           working-directory: ${{ matrix.module }}
+          args: --config ${{ github.workspace }}/.golangci.yml ./...
+
+      - name: format check
+        run: golangci-lint fmt --config ${{ github.workspace }}/.golangci.yml --diff ./...
+
+  check-deps:
+    name: import-as-opt-in
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+
+      - name: root-only import links no feature dependency
+        run: make check-deps
