@@ -73,6 +73,7 @@ linters:
             - "!**/template/**"
           allow:
             - $gostd
+            - github.com/guilhermebr/gox$ # the root's own external tests
             - github.com/guilhermebr/gox/pkg
             - github.com/ardanlabs/conf
             - go.opentelemetry.io
