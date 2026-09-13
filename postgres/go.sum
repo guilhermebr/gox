@@ -1,5 +1,5 @@
-github.com/ardanlabs/conf/v3 v3.8.0 h1:Mvv2wZJz8tIl705m5BU3ZRCP1V6TKY6qebA8i4sykrY=
-github.com/ardanlabs/conf/v3 v3.8.0/go.mod h1:XlL9P0quWP4m1weOVFmlezabinbZLI05niDof/+Ochk=
+github.com/ardanlabs/conf/v3 v3.13.0 h1:XKQXX35fFq/jencPu19xh0a6NPMT4NrpcRP/F9x7ejY=
+github.com/ardanlabs/conf/v3 v3.13.0/go.mod h1:XlL9P0quWP4m1weOVFmlezabinbZLI05niDof/+Ochk=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

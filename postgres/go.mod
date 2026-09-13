@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/postgres
 go 1.26
 
 require (
-	github.com/ardanlabs/conf/v3 v3.8.0
+	github.com/ardanlabs/conf/v3 v3.13.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/prometheus/client_golang v1.23.2
 )
