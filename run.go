@@ -66,8 +66,12 @@ func (a *App) RunContext(ctx context.Context) error {
 	return runErr
 }
 
-// flush gives buffered log sinks a chance to drain. slog's stdlib handlers
-// write synchronously, so today this only syncs stderr.
+// flush exports pending telemetry and syncs stderr.
 func (a *App) flush() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := a.otel.Shutdown(ctx); err != nil {
+		a.log.Error("telemetry flush failed", slog.String("error", err.Error()))
+	}
 	_ = os.Stderr.Sync()
 }

@@ -392,3 +392,22 @@ func TestMetricsRecordsRequestDurationByRouteAndStatus(t *testing.T) {
 		t.Fatal("http.server.request.duration not recorded")
 	}
 }
+
+func TestRouteSurvivesRequestCopiesMadeByInnerMiddleware(t *testing.T) {
+	var buf bytes.Buffer
+	logger, _ := log.New(log.Config{Level: "info", Format: "json"}, log.WithWriter(&buf))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /items/{id}", ok)
+	// Timeout derives a new request; the mux sets the pattern on that copy.
+	serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r)
+		middleware.SetRoute(r.Context(), r.Pattern)
+	})
+	h := middleware.Chain(middleware.RouteCapture(), middleware.Logging(logger), middleware.Timeout(time.Second))(serve)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/items/1", nil))
+
+	if !strings.Contains(buf.String(), `"route":"GET /items/{id}"`) {
+		t.Fatalf("route not captured through the request copy: %s", buf.String())
+	}
+}

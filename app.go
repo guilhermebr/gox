@@ -9,6 +9,7 @@ import (
 	"github.com/guilhermebr/gox/pkg/errors"
 	"github.com/guilhermebr/gox/pkg/health"
 	"github.com/guilhermebr/gox/pkg/lifecycle"
+	goxotel "github.com/guilhermebr/gox/pkg/otel"
 )
 
 // App is a built service: config loaded, logger ready, components
@@ -23,6 +24,7 @@ type App struct {
 	health   *health.Registry
 	manager  *lifecycle.Manager
 	mappers  []errors.Mapper
+	otel     *goxotel.Providers
 
 	mu     sync.RWMutex
 	values map[any]any

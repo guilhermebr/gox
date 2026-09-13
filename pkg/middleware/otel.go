@@ -39,7 +39,7 @@ func Tracing(tp trace.TracerProvider, prop propagation.TextMapPropagator) Middle
 			if !span.IsRecording() {
 				return
 			}
-			span.SetName(routeOf(r))
+			span.SetName(Route(r))
 			span.SetAttributes(attribute.String(attrRoute, pathPattern(r)))
 		})
 	}

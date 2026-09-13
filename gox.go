@@ -14,6 +14,7 @@ import (
 	"github.com/guilhermebr/gox/pkg/health"
 	"github.com/guilhermebr/gox/pkg/lifecycle"
 	"github.com/guilhermebr/gox/pkg/log"
+	goxotel "github.com/guilhermebr/gox/pkg/otel"
 )
 
 // BaseConfig is the configuration every service has. Embed it in your own
@@ -177,12 +178,25 @@ func (b *Builder) build() (*App, error) {
 			Level:       base.Log.Level,
 			Format:      base.Log.Format,
 			Environment: base.Environment,
-		})
+		}, log.WithContextAttrs(goxotel.LogAttrs))
 		if err != nil {
 			return nil, fmt.Errorf("gox: %w", err)
 		}
 		logger = logger.With(slog.String("service", base.ServiceName))
 		slog.SetDefault(logger)
+	}
+
+	providers, err := goxotel.Setup(context.Background(), goxotel.Config{
+		ServiceName: base.ServiceName,
+		Version:     base.Version,
+		Environment: base.Environment,
+		Enabled:     base.Otel.Enabled,
+		Endpoint:    base.Otel.Endpoint,
+		Protocol:    base.Otel.Protocol,
+		Insecure:    base.Otel.Insecure,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gox: %w", err)
 	}
 
 	a := &App{
@@ -199,6 +213,10 @@ func (b *Builder) build() (*App, error) {
 		),
 		values:  b.values,
 		mappers: b.mappers,
+		otel:    providers,
+	}
+	if b.httpClient {
+		b.buildHTTPClient(a)
 	}
 
 	sort.SliceStable(b.factories, func(i, j int) bool { return b.factories[i].stage < b.factories[j].stage })
@@ -217,6 +235,7 @@ func (b *Builder) build() (*App, error) {
 		srv := admin.New(admin.Config{Addr: base.Admin.Addr}, a.health,
 			admin.Info{Service: base.ServiceName, Version: base.Version},
 			admin.WithLogger(logger))
+		srv.Handle("GET /metrics", providers.Metrics)
 		a.add(int(stageAdmin), srv)
 	}
 	return a, nil

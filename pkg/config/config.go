@@ -46,6 +46,8 @@ type HTTPConfig struct {
 	ReadTimeout       time.Duration `conf:"default:30s"`
 	WriteTimeout      time.Duration `conf:"default:30s"`
 	IdleTimeout       time.Duration `conf:"default:120s"`
+	RequestTimeout    time.Duration `conf:"default:30s,help:per-request deadline enforced by the middleware chain"`
+	MaxBodyBytes      int64         `conf:"default:1048576,help:request body limit in bytes"`
 }
 
 // AdminConfig configures the ops server (/metrics, /healthz, /readyz, pprof).
@@ -68,8 +70,9 @@ type LogConfig struct {
 // OtelConfig configures tracing and metrics export.
 type OtelConfig struct {
 	Enabled  string `conf:"default:auto,help:auto | true | false; auto is on in production or when an endpoint is set"`
-	Endpoint string `conf:"help:OTLP collector endpoint"`
+	Endpoint string `conf:"help:OTLP collector host:port"`
 	Protocol string `conf:"default:grpc,help:grpc | http"`
+	Insecure bool   `conf:"default:false,help:plaintext connection to the collector"`
 }
 
 // HTTPClientConfig configures the default outbound HTTP client.
@@ -112,6 +115,12 @@ func (b *Base) Validate() error {
 	}
 	if !oneOf(strings.ToLower(b.Otel.Protocol), "grpc", "http") {
 		errs = append(errs, fmt.Errorf("config: OTEL_PROTOCOL must be grpc or http, got %q", b.Otel.Protocol))
+	}
+	if b.HTTP.RequestTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("config: HTTP_REQUEST_TIMEOUT must be > 0, got %v", b.HTTP.RequestTimeout))
+	}
+	if b.HTTP.MaxBodyBytes <= 0 {
+		errs = append(errs, fmt.Errorf("config: HTTP_MAX_BODY_BYTES must be > 0, got %v", b.HTTP.MaxBodyBytes))
 	}
 	if b.Shutdown.Timeout <= 0 {
 		errs = append(errs, fmt.Errorf("config: SHUTDOWN_TIMEOUT must be > 0, got %v", b.Shutdown.Timeout))

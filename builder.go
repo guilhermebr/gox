@@ -38,6 +38,10 @@ type Builder struct {
 	shutdownTimeout time.Duration
 	adminDisabled   bool
 	mappers         []errors.Mapper
+	http            *httpOptions
+	middleware      []Middleware
+	auth            Middleware
+	httpClient      bool
 }
 
 type factory struct {

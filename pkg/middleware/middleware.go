@@ -146,7 +146,7 @@ func Logging(logger *slog.Logger, opts ...LoggingOption) Middleware {
 				level = slog.LevelWarn
 			}
 			reqLog.LogAttrs(r.Context(), level, "request",
-				slog.String("route", routeOf(r)),
+				slog.String("route", Route(r)),
 				slog.Int("status", rec.status),
 				slog.Int("bytes", rec.bytes),
 				slog.Duration(log.KeyDuration, time.Since(began)))
@@ -154,17 +154,9 @@ func Logging(logger *slog.Logger, opts ...LoggingOption) Middleware {
 	}
 }
 
-// routeOf returns the mux pattern that matched, or "unmatched".
-func routeOf(r *http.Request) string {
-	if r.Pattern == "" {
-		return "unmatched"
-	}
-	return r.Pattern
-}
-
 // pathPattern strips the method from a mux pattern: "GET /x/{id}" → "/x/{id}".
 func pathPattern(r *http.Request) string {
-	p := routeOf(r)
+	p := Route(r)
 	if _, path, ok := strings.Cut(p, " "); ok {
 		return path
 	}

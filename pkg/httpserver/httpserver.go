@@ -17,6 +17,7 @@ import (
 	"github.com/guilhermebr/gox/pkg/health"
 	"github.com/guilhermebr/gox/pkg/httpx"
 	"github.com/guilhermebr/gox/pkg/log"
+	"github.com/guilhermebr/gox/pkg/middleware"
 )
 
 // Config is the server's listen address and timeouts.
@@ -137,12 +138,14 @@ func RegisterHealth(mux *http.ServeMux, reg *health.Registry) {
 
 // Handler wraps mux so unmatched requests render the error envelope
 // instead of net/http's plain-text 404 and 405. Matched requests go
-// straight to the mux, which sets r.Pattern and path values.
+// straight to the mux, which sets r.Pattern and path values; the pattern is
+// then published to the outer middleware through middleware.SetRoute.
 func Handler(mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h, pattern := mux.Handler(r)
 		if pattern != "" {
 			mux.ServeHTTP(w, r)
+			middleware.SetRoute(r.Context(), r.Pattern)
 			return
 		}
 		// The mux's own error handler: run it against a probe to learn

@@ -15,6 +15,7 @@ import (
 	"github.com/guilhermebr/gox/pkg/errors"
 	"github.com/guilhermebr/gox/pkg/health"
 	"github.com/guilhermebr/gox/pkg/httpserver"
+	"github.com/guilhermebr/gox/pkg/middleware"
 )
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -183,5 +184,22 @@ func TestServerStartFailsFastOnBusyPortAndStopBeforeStartIsSafe(t *testing.T) {
 	err = srv.Start(context.Background())
 	if err == nil || !strings.HasPrefix(err.Error(), "http: listen") {
 		t.Fatalf("Start on a busy port = %v", err)
+	}
+}
+
+func TestHandlerPublishesTheMatchedRoute(t *testing.T) {
+	mux := httpserver.NewMux()
+	mux.HandleFunc("GET /items/{id}", func(http.ResponseWriter, *http.Request) {})
+	var got string
+	probe := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r)
+			got = middleware.Route(r)
+		})
+	}
+	middleware.Chain(middleware.RouteCapture(), probe, middleware.Timeout(time.Second))(httpserver.Handler(mux)).
+		ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/items/3", nil))
+	if got != "GET /items/{id}" {
+		t.Fatalf("Route = %q", got)
 	}
 }

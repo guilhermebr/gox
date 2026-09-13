@@ -2,12 +2,10 @@ package gox
 
 import "github.com/guilhermebr/gox/pkg/errors"
 
-// Re-exports of the error model so services import only gox.
+// Re-exports of the error model so services import only gox. The concrete
+// error type stays in pkg/errors; services work with codes and constructors.
 
-// Error is a coded error with a public-safe message.
-type Error = errors.Error
-
-// Code classifies an Error.
+// Code classifies a coded error.
 type Code = errors.Code
 
 // Codes.
