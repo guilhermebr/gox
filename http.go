@@ -39,10 +39,10 @@ type (
 // default middleware chain, /healthz and /readyz on the public port, and
 // 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
 //
-// Chain: route capture → recovery → request id → tracing → metrics →
+// Chain: error renderers → route capture → recovery → request id → tracing → metrics →
 // logging → timeout → max bytes → security headers → CORS (WithCORS) →
-// auth (WithAuth) → WithMiddleware → mux. Timeouts and the body limit come
-// from HTTP_* config.
+// feature middleware (Builder.Middleware) → auth (WithAuth) →
+// WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
 func HTTP(opts ...HTTPOption) Option {
 	return func(b *Builder) error {
 		if b.http != nil {
@@ -60,6 +60,7 @@ func HTTP(opts ...HTTPOption) Option {
 				return nil, err
 			}
 			chain := []Middleware{
+				withErrorRenderers(b.renderers),
 				middleware.RouteCapture(),
 				middleware.Recovery(a.log),
 				middleware.RequestID(),
@@ -74,6 +75,7 @@ func HTTP(opts ...HTTPOption) Option {
 			if o.cors != nil {
 				chain = append(chain, middleware.CORS(*o.cors))
 			}
+			chain = append(chain, b.features...)
 			if b.auth != nil {
 				chain = append(chain, b.auth)
 			}
@@ -93,6 +95,27 @@ func HTTP(opts ...HTTPOption) Option {
 			return srv, nil
 		})
 		return nil
+	}
+}
+
+// withErrorRenderers installs the feature renderers above everything else
+// so every rejection, including a recovered panic, can become a page.
+func withErrorRenderers(renderers []httpx.ErrorRenderer) Middleware {
+	return func(next http.Handler) http.Handler {
+		if len(renderers) == 0 {
+			return next
+		}
+		combined := func(w http.ResponseWriter, r *http.Request, status int, env httpx.Envelope) bool {
+			for _, fn := range renderers {
+				if fn(w, r, status, env) {
+					return true
+				}
+			}
+			return false
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(httpx.WithErrorRenderer(r.Context(), combined)))
+		})
 	}
 }
 
@@ -156,6 +179,19 @@ func (b *Builder) buildHTTPClient(a *App) {
 		httpclient.WithPropagator(a.otel.Propagator),
 	)
 	b.Set(httpClientKey{}, c)
+}
+
+// HasHTTP reports whether HTTP() was declared. Feature packages that
+// decorate the public server check it to give a precise error.
+func (a *App) HasHTTP() bool {
+	_, ok := a.Value(muxKey{})
+	return ok
+}
+
+// HasHTTPClient reports whether HTTPClient() was declared.
+func (a *App) HasHTTPClient() bool {
+	_, ok := a.Value(httpClientKey{})
+	return ok
 }
 
 // Mux returns the public ServeMux. Register routes on it before Run.

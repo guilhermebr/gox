@@ -53,6 +53,9 @@ var (
 	HTTPStatus         = errors.HTTPStatus
 )
 
+// Envelope is the JSON error body every gox response uses.
+type Envelope = errors.Envelope
+
 // ErrorMapper translates a service's own errors into coded errors at the
 // boundary. See WithErrorMapper.
 type ErrorMapper = errors.Mapper

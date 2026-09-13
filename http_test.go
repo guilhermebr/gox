@@ -290,3 +290,42 @@ func TestAdminMetricsExposeHTTPServerDuration(t *testing.T) {
 		t.Fatalf("/metrics lacks the request histogram:\n%.2000s", body)
 	}
 }
+
+func TestErrorRendererHookCoversPanicsAndTimeouts(t *testing.T) {
+	t.Setenv("BILLING_HTTP_REQUEST_TIMEOUT", "30ms")
+	html := func(w http.ResponseWriter, r *http.Request, status int, env gox.Envelope) bool {
+		if r.Header.Get("Accept") != "text/html" {
+			return false
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte("<h1>" + env.Code + "</h1>"))
+		return true
+	}
+	feature := func(b *gox.Builder) error {
+		b.ErrorRenderer(html)
+		return nil
+	}
+	url, stop := runHTTP(t, func(a *gox.App) {
+		a.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("x") })
+		a.HandleFunc("GET /slow", func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	}, nil, feature)
+	defer stop()
+
+	resp, body := do(t, http.MethodGet, url+"/boom", nil, "Accept", "text/html")
+	if resp.StatusCode != http.StatusInternalServerError || string(body) != "<h1>internal</h1>" {
+		t.Fatalf("panic: %d %s", resp.StatusCode, body)
+	}
+	resp, body = do(t, http.MethodGet, url+"/slow", nil, "Accept", "text/html")
+	if resp.StatusCode != http.StatusGatewayTimeout || string(body) != "<h1>deadline_exceeded</h1>" {
+		t.Fatalf("timeout: %d %s", resp.StatusCode, body)
+	}
+	resp, body = do(t, http.MethodGet, url+"/nope", nil, "Accept", "text/html")
+	if resp.StatusCode != http.StatusNotFound || string(body) != "<h1>not_found</h1>" {
+		t.Fatalf("404: %d %s", resp.StatusCode, body)
+	}
+	resp, body = do(t, http.MethodGet, url+"/nope", nil)
+	if !strings.Contains(string(body), `"code":"not_found"`) {
+		t.Fatalf("json fallback: %d %s", resp.StatusCode, body)
+	}
+}

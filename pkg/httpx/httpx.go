@@ -24,6 +24,10 @@ func JSON(w http.ResponseWriter, status int, v any) error {
 	return json.NewEncoder(w).Encode(v)
 }
 
+// Envelope is re-exported so middleware built on httpx need not import
+// pkg/errors for the type alone.
+type Envelope = errors.Envelope
+
 // ErrorRenderer renders an error for requests that want something other
 // than the JSON envelope (an HTML page). It returns false to decline, in
 // which case the envelope is written.

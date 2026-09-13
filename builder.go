@@ -7,6 +7,7 @@ import (
 
 	"github.com/guilhermebr/gox/pkg/config"
 	"github.com/guilhermebr/gox/pkg/errors"
+	"github.com/guilhermebr/gox/pkg/httpx"
 	"github.com/guilhermebr/gox/pkg/lifecycle"
 )
 
@@ -42,6 +43,8 @@ type Builder struct {
 	mappers         []errors.Mapper
 	http            *httpOptions
 	middleware      []Middleware
+	features        []Middleware
+	renderers       []httpx.ErrorRenderer
 	auth            Middleware
 	httpClient      bool
 }
@@ -90,6 +93,22 @@ func (b *Builder) Setup(fn func(a *App) error) {
 // order options were passed in.
 func (b *Builder) Finish(fn func(a *App) error) {
 	b.finishes = append(b.finishes, fn)
+}
+
+// Middleware adds middleware a feature package needs on every request. It
+// runs after the default chain and before the auth slot and the service's
+// own WithMiddleware, so auth can rely on what the feature set up (a
+// session, for example).
+func (b *Builder) Middleware(mw ...Middleware) {
+	b.features = append(b.features, mw...)
+}
+
+// ErrorRenderer registers a renderer for error responses (an HTML error
+// page). It is installed above the whole chain, so panics, timeouts and
+// unmatched routes reach it too. Renderers are tried in registration order;
+// the first to return true wins, otherwise the JSON envelope is written.
+func (b *Builder) ErrorRenderer(fn httpx.ErrorRenderer) {
+	b.renderers = append(b.renderers, fn)
 }
 
 // Set stores a value feature packages expose through their From accessor.

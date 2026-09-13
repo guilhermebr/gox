@@ -33,6 +33,11 @@ type App struct {
 // Name returns the service name given to New.
 func (a *App) Name() string { return a.name }
 
+// ConfigPrefix returns the environment prefix config was loaded under
+// ("BILLING", or "" for unprefixed), so features can name variables in
+// their own error messages.
+func (a *App) ConfigPrefix() string { return a.prefix }
+
 // Log returns the service logger.
 func (a *App) Log() *slog.Logger { return a.log }
 

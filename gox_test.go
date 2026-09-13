@@ -519,3 +519,45 @@ func TestBuilderFinishRunsAfterFactories(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestAppReportsPrefixAndDeclaredFeatures(t *testing.T) {
+	setArgs(t)
+	a, err := gox.New("billing", base(gox.WithConfigPrefix("BILL"))...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.ConfigPrefix() != "BILL" || a.HasHTTP() || a.HasHTTPClient() {
+		t.Fatalf("prefix=%q http=%v client=%v", a.ConfigPrefix(), a.HasHTTP(), a.HasHTTPClient())
+	}
+	b, err := gox.New("billing", base(gox.HTTP(), gox.HTTPClient())...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.ConfigPrefix() != "BILLING" || !b.HasHTTP() || !b.HasHTTPClient() {
+		t.Fatalf("prefix=%q http=%v client=%v", b.ConfigPrefix(), b.HasHTTP(), b.HasHTTPClient())
+	}
+}
+
+func TestFeatureMiddlewareRunsBeforeAuthAndUserMiddleware(t *testing.T) {
+	var order []string
+	tag := func(name string) gox.Middleware {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				order = append(order, name)
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+	feature := func(b *gox.Builder) error {
+		b.Middleware(tag("feature"))
+		return nil
+	}
+	url, stop := runHTTP(t, func(a *gox.App) {
+		a.HandleFunc("GET /", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	}, nil, feature, gox.WithAuth(tag("auth")), gox.WithMiddleware(tag("user")))
+	defer stop()
+	do(t, http.MethodGet, url+"/", nil)
+	if strings.Join(order, ",") != "feature,auth,user" {
+		t.Fatalf("order = %v", order)
+	}
+}
