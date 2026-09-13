@@ -262,7 +262,8 @@ The Logger, HTTP, Postgres, Supabase, and JWT modules use the `ardanlabs/conf` p
 ## Installation
 
 `gox` is a multi-module repository — each module is versioned and imported
-independently. Install only what you need:
+independently. Every module requires **Go 1.26 or newer**. Install only what
+you need:
 
 ```bash
 go get github.com/guilhermebr/gox/logger
