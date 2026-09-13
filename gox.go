@@ -219,6 +219,11 @@ func (b *Builder) build() (*App, error) {
 		b.buildHTTPClient(a)
 	}
 
+	for _, fn := range b.setups {
+		if err := fn(a); err != nil {
+			return nil, fmt.Errorf("gox: %w", err)
+		}
+	}
 	sort.SliceStable(b.factories, func(i, j int) bool { return b.factories[i].stage < b.factories[j].stage })
 	for _, f := range b.factories {
 		c, err := f.fn(a)

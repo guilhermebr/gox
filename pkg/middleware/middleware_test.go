@@ -411,3 +411,52 @@ func TestRouteSurvivesRequestCopiesMadeByInnerMiddleware(t *testing.T) {
 		t.Fatalf("route not captured through the request copy: %s", buf.String())
 	}
 }
+
+func TestBearerValidatesTokensAndStoresThePrincipal(t *testing.T) {
+	validate := func(_ context.Context, token string) (any, error) {
+		if token == "good" {
+			return "user-1", nil
+		}
+		return nil, stderrors.New("bad token")
+	}
+	var seen any
+	h := middleware.Bearer(validate)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = middleware.Principal(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	t.Run("missing", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		if rec.Code != http.StatusUnauthorized || envelope(t, rec).Code != "unauthenticated" {
+			t.Fatalf("%d %s", rec.Code, rec.Body)
+		}
+	})
+	t.Run("not bearer", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Basic abc")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%d", rec.Code)
+		}
+	})
+	t.Run("invalid", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer nope")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized || strings.Contains(rec.Body.String(), "bad token") {
+			t.Fatalf("%d %s; the validator's error text must not be echoed", rec.Code, rec.Body)
+		}
+	})
+	t.Run("valid", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "bearer good") // scheme is case-insensitive
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent || seen != "user-1" {
+			t.Fatalf("code=%d principal=%v", rec.Code, seen)
+		}
+	})
+}

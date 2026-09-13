@@ -445,3 +445,43 @@ func freeAddr(t *testing.T) string {
 	_ = ln.Close()
 	return addr
 }
+
+func TestBuilderSetupRunsAfterConfigAndBeforeFactories(t *testing.T) {
+	setArgs(t)
+	t.Setenv("BILLING_FAKE_URL", "fake://db")
+	var order []string
+	type codecKey struct{}
+	feature := func(b *gox.Builder) error {
+		b.Setup(func(a *gox.App) error {
+			order = append(order, "setup:"+a.Config().ServiceName)
+			b.Set(codecKey{}, "codec")
+			return nil
+		})
+		return nil
+	}
+	ev := &events{}
+	wrapped := func(b *gox.Builder) error {
+		if err := fakeEnable(ev)(b); err != nil {
+			return err
+		}
+		b.Component(gox.StageDatastore, func(a *gox.App) (lifecycle.Component, error) {
+			v, _ := gox.Value[string](a, codecKey{})
+			order = append(order, "factory:"+v)
+			return &userComponent{name: "x", events: ev}, nil
+		})
+		return nil
+	}
+	if _, err := gox.New("billing", base(wrapped, feature)...); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(order, ",") != "setup:billing,factory:codec" {
+		t.Fatalf("order = %v", order)
+	}
+	failing := func(b *gox.Builder) error {
+		b.Setup(func(*gox.App) error { return errors.New("bad key") })
+		return nil
+	}
+	if _, err := gox.New("billing", base(failing)...); err == nil || !strings.Contains(err.Error(), "bad key") {
+		t.Fatalf("err = %v", err)
+	}
+}

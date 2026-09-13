@@ -33,6 +33,7 @@ type Builder struct {
 	userCfg         any
 	sections        []config.Section
 	factories       []factory
+	setups          []func(a *App) error
 	values          map[any]any
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
@@ -72,6 +73,14 @@ func (b *Builder) ConfigSection(name string, dst any, declaredBy string) {
 // started by Run.
 func (b *Builder) Component(stage Stage, fn func(a *App) (lifecycle.Component, error)) {
 	b.factories = append(b.factories, factory{stage: stage, fn: fn})
+}
+
+// Setup registers a function that runs at the end of New, after config and
+// logging are ready and before any component factory. It is for features
+// that produce a value without a lifecycle (a JWT service, a codec); use
+// Component for anything that starts or stops.
+func (b *Builder) Setup(fn func(a *App) error) {
+	b.setups = append(b.setups, fn)
 }
 
 // Set stores a value feature packages expose through their From accessor.
