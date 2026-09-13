@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"time"
@@ -9,12 +10,14 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Sentinel errors returned by ValidateToken, usable with errors.Is.
+// Sentinel errors, usable with errors.Is.
 var (
 	// ErrInvalidToken indicates the token failed signature or validity checks.
-	ErrInvalidToken = errors.New("invalid token")
+	ErrInvalidToken = errors.New("jwt: invalid token")
 	// ErrInvalidClaims indicates the token's claims could not be decoded.
-	ErrInvalidClaims = errors.New("invalid token claims")
+	ErrInvalidClaims = errors.New("jwt: invalid token claims")
+	// ErrNoSigningKey is returned by GenerateToken on a verify-only service.
+	ErrNoSigningKey = errors.New("jwt: no signing key configured")
 )
 
 // Claims are the JWT claims issued and validated by Service.
@@ -25,90 +28,116 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// Service signs and validates HS256 JWTs with a fixed secret, issuer, and expiry.
+// Service signs and validates tokens with one algorithm: HS256 with a
+// shared secret, or RS256 with an RSA key pair. Tokens signed with any
+// other algorithm are rejected.
 type Service struct {
-	secretKey []byte
+	method    jwt.SigningMethod
+	signKey   any
+	verifyKey any
 	issuer    string
 	expiry    time.Duration
 }
 
-// NewService creates a Service. expiry is a Go duration string (e.g. "24h");
-// an unparseable value falls back to 24h.
-func NewService(secretKey, issuer string, expiry string) Service {
-	d, err := time.ParseDuration(expiry)
-	if err != nil {
-		d = 24 * time.Hour
-	}
-	return Service{
-		secretKey: []byte(secretKey),
-		issuer:    issuer,
-		expiry:    d,
-	}
+// NewHS256 creates a Service that signs and verifies with a shared secret.
+func NewHS256(secret []byte, issuer string, expiry time.Duration) *Service {
+	return &Service{method: jwt.SigningMethodHS256, signKey: secret, verifyKey: secret, issuer: issuer, expiry: expiry}
 }
 
-// NewServiceFromConfig creates a Service from a pre-loaded Config.
-func NewServiceFromConfig(cfg Config) Service {
-	return NewService(cfg.SecretKey, cfg.Issuer, cfg.Expiry)
+// NewRS256 creates a Service that verifies with pub and, when priv is not
+// nil, signs with it. A service that only validates tokens issued
+// elsewhere passes nil.
+func NewRS256(priv *rsa.PrivateKey, pub *rsa.PublicKey, issuer string, expiry time.Duration) *Service {
+	s := &Service{method: jwt.SigningMethodRS256, verifyKey: pub, issuer: issuer, expiry: expiry}
+	if priv != nil {
+		s.signKey = priv
+	}
+	return s
+}
+
+// NewFromConfig builds a Service from a validated Config.
+func NewFromConfig(cfg Config) (*Service, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("jwt: %w", err)
+	}
+	if cfg.SecretKey != "" {
+		return NewHS256([]byte(cfg.SecretKey), cfg.Issuer, cfg.Expiry), nil
+	}
+	pub, err := parsePublicKey(cfg.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("jwt: JWT_PUBLIC_KEY: %w", err)
+	}
+	var priv *rsa.PrivateKey
+	if cfg.PrivateKey != "" {
+		if priv, err = parsePrivateKey(cfg.PrivateKey); err != nil {
+			return nil, fmt.Errorf("jwt: JWT_PRIVATE_KEY: %w", err)
+		}
+	}
+	return NewRS256(priv, pub, cfg.Issuer, cfg.Expiry), nil
 }
 
 // GenerateToken issues a signed token for the given user.
-func (s Service) GenerateToken(userID, email, accountType string) (string, error) {
+func (s *Service) GenerateToken(userID, email, accountType string) (string, error) {
+	if s.signKey == nil {
+		return "", ErrNoSigningKey
+	}
+	now := time.Now()
 	claims := &Claims{
 		UserID:      userID,
 		Email:       email,
 		AccountType: accountType,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.expiry)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
+			ID:        uuid.Must(uuid.NewV7()).String(),
 			Issuer:    s.issuer,
 			Subject:   userID,
-			ID:        uuid.Must(uuid.NewV4()).String(),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.expiry)),
 		},
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(s.secretKey)
+	token, err := jwt.NewWithClaims(s.method, claims).SignedString(s.signKey)
+	if err != nil {
+		return "", fmt.Errorf("jwt: sign: %w", err)
+	}
+	return token, nil
 }
 
-// ValidateToken parses and verifies a token, returning its claims. It returns an
-// error wrapping ErrInvalidToken or ErrInvalidClaims on failure.
-func (s Service) ValidateToken(tokenString string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return s.secretKey, nil
-	})
+// ValidateToken parses and verifies a token, returning its claims. Errors
+// wrap ErrInvalidToken or ErrInvalidClaims.
+func (s *Service) ValidateToken(tokenString string) (*Claims, error) {
+	opts := []jwt.ParserOption{jwt.WithValidMethods([]string{s.method.Alg()})}
+	if s.issuer != "" {
+		opts = append(opts, jwt.WithIssuer(s.issuer))
+	}
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(*jwt.Token) (any, error) {
+		return s.verifyKey, nil
+	}, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
-
 	if !token.Valid {
 		return nil, ErrInvalidToken
 	}
-
 	claims, ok := token.Claims.(*Claims)
 	if !ok {
 		return nil, ErrInvalidClaims
 	}
-
 	return claims, nil
 }
 
-// RefreshToken returns a fresh token if the supplied one is within 5 minutes of
-// expiry, otherwise it returns the original token unchanged.
-func (s Service) RefreshToken(tokenString string) (string, error) {
+// RefreshWindow is how close to expiry a token must be for RefreshToken to
+// issue a new one.
+const RefreshWindow = 5 * time.Minute
+
+// RefreshToken returns a fresh token when the supplied one is within
+// RefreshWindow of expiry, otherwise the original token unchanged.
+func (s *Service) RefreshToken(tokenString string) (string, error) {
 	claims, err := s.ValidateToken(tokenString)
 	if err != nil {
-		return "", fmt.Errorf("invalid token for refresh: %w", err)
+		return "", err
 	}
-
-	// Check if token is close to expiration (within 5 minutes)
-	if time.Until(claims.ExpiresAt.Time) > 5*time.Minute {
-		return tokenString, nil // Token is still fresh
+	if claims.ExpiresAt != nil && time.Until(claims.ExpiresAt.Time) > RefreshWindow {
+		return tokenString, nil
 	}
-
-	// Generate new token
 	return s.GenerateToken(claims.UserID, claims.Email, claims.AccountType)
 }
