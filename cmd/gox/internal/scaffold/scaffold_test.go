@@ -1,6 +1,7 @@
 package scaffold_test
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/http"
@@ -132,7 +133,9 @@ func TestGoxDirAddsReplaceDirectives(t *testing.T) {
 // and answer /healthz on the admin port without touching a file. The web
 // variant runs without any environment; the postgres variant needs a
 // database and is only run when DATABASE_URL is set (CI provides one),
-// otherwise it is built and tested but not started.
+// otherwise it is built and tested but not started. DATABASE_URL must
+// point at a database the tests own: the service runs its migrations, and
+// a schema_migrations table left by another project makes migrate fail.
 func TestGeneratedServiceBuildsTestsAndAnswersHealthz(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds whole services; skipped with -short")
@@ -195,6 +198,8 @@ func probe(t *testing.T, dir, name string, extraEnv []string) {
 	cmd := exec.CommandContext(ctx, filepath.Join(dir, name))
 	cmd.Dir = dir
 	cmd.Env = append(append(os.Environ(), prefix+"_ADMIN_ADDR="+adminAddr, prefix+"_HTTP_ADDR="+httpAddr, prefix+"_LOG_FORMAT=json"), extraEnv...)
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +219,7 @@ func probe(t *testing.T, dir, name string, extraEnv []string) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if status != http.StatusOK {
-		t.Fatalf("/readyz on the admin port = %d", status)
+		t.Fatalf("/readyz on the admin port = %d; service output:\n%s", status, output.String())
 	}
 	resp, err := http.Get("http://" + adminAddr + "/healthz")
 	if err != nil || resp.StatusCode != http.StatusOK {

@@ -25,7 +25,7 @@ build:
 test:
 	$(call foreach_module,go test ./... -race -count=1)
 
-## test-integration: run tests tagged `integration` (needs DATABASE_URL or a container runtime)
+## test-integration: run tests tagged `integration` (needs DATABASE_URL: a throwaway database the tests own)
 test-integration:
 	$(call foreach_module,go test ./... -race -count=1 -tags integration)
 

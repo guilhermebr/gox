@@ -37,7 +37,7 @@ docs/recipes/                      copy-pasteable tasks (build-checked)
 ```
 make ci              # everything CI runs: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules
 make test            # race tests, every module
-make test-integration# needs DATABASE_URL (postgres); CI provides one
+make test-integration# needs DATABASE_URL pointing at a throwaway postgres database the tests own; CI provides one
 make lint            # golangci-lint v2 with the shared .golangci.yml
 make fmt             # gofumpt + goimports
 make generate        # templ generate for examples/web (CLI pinned to web/go.mod)
