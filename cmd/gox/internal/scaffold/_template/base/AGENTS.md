@@ -20,10 +20,10 @@ static/                       package static (//go:embed css js; var FS) with th
 
 ## How to
 
-- **Add a route**: `a.HandleFunc("GET /things/{id}", handler)` in `main.go` or a feature's `Register(a *gox.App)`. Read path values with `r.PathValue("id")`, bodies with `gox.Decode`, respond with `gox.JSON`, fail with `gox.Error(w, r, gox.NotFound("thing %s", id))`.
+- **Add a route**: a feature package `internal/<feature>/handler.go` with `Register(a *gox.App, deps...)` calling `a.HandleFunc("GET /things/{id}", h.get)`, registered from `main.go`; handlers get their dependencies (a `*pgxpool.Pool`, a config value) through `Register`, so tests can pass `nil` or fakes. Read path values with `r.PathValue("id")`, bodies with `gox.Decode`, respond with `gox.JSON`, fail with `gox.Error(w, r, gox.NotFound("thing %s", id))`.
 - **Add config**: a field on the service's `Config` struct (which embeds `gox.BaseConfig`) with a `conf` tag; document it in `.env.example`.
 - **Add a migration**: a new `migrations/NNNN_name.up.sql` (and `.down.sql`); `postgres.WithMigrations(migrations.FS)` runs it at boot.
-- **Add a page** (HTML apps): a templ component taking typed params, rendered with `web.Render`; forms follow decode → 422 re-render → flash + redirect.
+- **Add a page** (HTML apps): a templ component in `internal/<feature>/views/` taking typed params, rendered with `web.Render` inside `web/layout`; forms follow decode → 422 re-render → flash + redirect; JSON `POST` routes are not CSRF-checked, form posts are.
 - **Add a background job**: `gox.Periodic("name", interval, fn)` for timers; `gox.Component(c)` for anything with Start/Stop; never a bare goroutine.
 - **Add a health check**: implement `Ready(ctx) error` on your component, or `a.Health().AddReadiness("name", fn)`.
 - **Call another service**: `a.HTTPClient()` (declare `gox.HTTPClient()`); in an HTML app call this service's own API with `web.APIFrom(r)`.
@@ -34,6 +34,7 @@ Recipes with complete code for each of these are in the gox module under
 ## Verify
 
 ```
+go mod tidy      # after importing a module directly for the first time
 make test lint
 ```
 

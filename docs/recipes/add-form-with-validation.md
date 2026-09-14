@@ -1,6 +1,6 @@
 # Add a form with validation (decode → 422 re-render → flash + redirect)
 
-```templ path=views/sign.templ
+```templ path=internal/signup/views/sign.templ
 package views
 
 import "github.com/guilhermebr/gox/web"
@@ -43,7 +43,7 @@ import (
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/web"
 
-	"example.com/shop/views"
+	"example.com/shop/internal/signup/views"
 )
 
 func main() {

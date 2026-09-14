@@ -1,6 +1,6 @@
 # Add an htmx partial
 
-```templ path=views/search.templ
+```templ path=internal/search/views/search.templ
 package views
 
 // Search renders the page; the results list is a partial swapped by htmx.
@@ -42,7 +42,7 @@ import (
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/web"
 
-	"example.com/shop/views"
+	"example.com/shop/internal/search/views"
 )
 
 var catalog = []string{"apple", "apricot", "banana"}

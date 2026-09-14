@@ -1,7 +1,7 @@
 # Add an HTML page (templ)
 
-```templ path=views/layout.templ
-package views
+```templ path=web/layout/layout.templ
+package layout
 
 import "github.com/guilhermebr/gox/web"
 
@@ -27,7 +27,7 @@ templ layout(page *web.Page, body templ.Component) {
 }
 ```
 
-```templ path=views/invoices.templ
+```templ path=internal/invoices/views/invoices.templ
 package views
 
 // Pages take explicit typed parameters.
@@ -45,25 +45,21 @@ templ Invoices(ids []string) {
 package main
 
 import (
-	"embed"
-	"io/fs"
 	"net/http"
 	"os"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/web"
 
-	"example.com/shop/views"
+	"example.com/shop/internal/invoices/views"
+	"example.com/shop/static"
+	"example.com/shop/web/layout"
 )
 
-//go:embed static
-var static embed.FS
-
 func main() {
-	assets, _ := fs.Sub(static, "static")
 	a := gox.MustNew("shop",
 		gox.HTTP(),
-		web.Enable(web.WithStatic(assets), web.WithSessions(), web.WithLayout(views.Layout)),
+		web.Enable(web.WithStatic(static.FS), web.WithSessions(), web.WithLayout(layout.Layout)),
 	)
 
 	a.HandleFunc("GET /invoices", func(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +71,16 @@ func main() {
 		os.Exit(1)
 	}
 }
+```
+
+```go path=static/static.go
+// Package static embeds the assets; web.WithStatic(FS) serves them under /static/.
+package static
+
+import "embed"
+
+//go:embed all:css
+var FS embed.FS
 ```
 
 ```css path=static/css/app.css
