@@ -160,6 +160,13 @@ linters:
               desc: feature packages do not import deprecated shims
             - pkg: github.com/guilhermebr/gox/logger
               desc: feature packages do not import deprecated shims
+        cmd:
+          list-mode: strict
+          files:
+            - "**/cmd/**"
+          allow:
+            - $gostd
+            - github.com/guilhermebr/gox
         utilities:
           list-mode: strict
           files:

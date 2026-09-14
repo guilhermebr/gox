@@ -91,5 +91,11 @@ jobs:
       - name: generated templ code is current
         run: make generate-check
 
+      - name: llm.txt is current
+        run: make llm-check
+
+      - name: recipes build
+        run: make check-recipes
+
       - name: import-as-opt-in probes
         run: make check-deps

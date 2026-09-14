@@ -1,175 +1,485 @@
-gox: LLM quickstart and usage guide
+# gox — build a Go service with one import
 
-Purpose: Help LLMs (Cursor, Claude, ChatGPT, Gemini) use gox packages correctly.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/supabase`, `gox/web`. This file is complete: everything public is listed below as Go signatures.
 
-Repository: github.com/guilhermebr/gox
-Packages:
-- github.com/guilhermebr/gox/http
-- github.com/guilhermebr/gox/logger
-- github.com/guilhermebr/gox/monetary
-- github.com/guilhermebr/gox/postgres
-- github.com/guilhermebr/gox/supabase
+Rules that always hold:
+- `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
+- Handlers are plain `net/http`: `func(w http.ResponseWriter, r *http.Request)`, registered with Go 1.22 patterns (`"GET /invoices/{id}"`, `r.PathValue("id")`). `"GET /{$}"` is the exact root; `"GET /"` is a catch-all.
+- Config comes from environment variables under one prefix, the uppercased service name: service `billing` reads `BILLING_HTTP_ADDR`, `BILLING_POSTGRES_URL`. `gox.WithConfigPrefix("")` makes them unprefixed. `--help` prints every variable.
+- Errors: return `gox.NotFound("invoice %s", id)` style errors and render them with `gox.Error(w, r, err)` (JSON) or `web.Error(w, r, err)` (HTML or JSON). Never write status codes by hand for errors.
+- Accessors for undeclared features panic with a message naming the option to add; read the message and add the option.
+- Every service gets, without writing code for it: structured logs with request ids, traces and metrics, `/healthz` and `/readyz` on the public port, an admin server on `:9090` with `/metrics`, `/healthz`, `/readyz`, `/version`, `/debug/pprof/`, graceful shutdown on SIGTERM.
 
-General rules for code generation:
-- Always `go get` the specific subpackage before use.
-- Prefer environment-driven configuration using a prefix (e.g., "APP" or "DB").
-- Use context where applicable (database, network operations).
-- Import logger and pass it to packages that accept it.
-- Handle errors explicitly; do not ignore returned errors.
+Install: `go get github.com/guilhermebr/gox` (root); `go get github.com/guilhermebr/gox/postgres` (and so on) per feature. Go 1.26+.
 
----
-logger (github.com/guilhermebr/gox/logger)
-- What it is: Configurable slog logger with env-driven level/format and sane defaults.
-- Install: `go get github.com/guilhermebr/gox/logger`
-- Default env vars (prefix example: APP):
-  - APP_LOGGING_LEVEL (info|debug|warn|error) default: info
-  - APP_LOGGING_TYPE (text|json) default: text
-  - APP_LOGGING_STDERR (true|false) default: false
-  - APP_ENVIRONMENT (development|production) default: development
-- Create a logger:
-  Example:
-  
-  import "github.com/guilhermebr/gox/logger"
-  
-  log, err := logger.NewLogger("APP")
-  if err != nil { panic(err) }
-  log.Info("started", "version", "1.0.0")
-  
-- Custom config:
-  cfg := logger.Config{Level: "debug", Type: "json", Environment: "production"}
-  log, err := logger.NewLoggerConfig(cfg)
+# Canonical mains (copy these)
 
----
-http (github.com/guilhermebr/gox/http)
-- What it is: Thin wrapper over net/http with graceful shutdown, env config, multi-server management.
-- Install: `go get github.com/guilhermebr/gox/http`
-- Default env vars (prefix example: HTTP):
-  - HTTP_ADDRESS (default: 0.0.0.0:3000)
-  - HTTP_READ_HEADER_TIMEOUT (default: 60s)
-  - HTTP_READ_TIMEOUT (default: 10s)
-  - HTTP_WRITE_TIMEOUT (default: 10s)
-  - HTTP_IDLE_TIMEOUT (default: 60s)
-  - HTTP_SHUTDOWN_TIMEOUT (default: 20s)
-- Single server example:
-  
-  import (
-      goxhttp "github.com/guilhermebr/gox/http"
-      "github.com/guilhermebr/gox/logger"
-      "net/http"
-  )
-  
-  log, _ := logger.NewLogger("APP")
-  mux := http.NewServeMux()
-  mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-      w.WriteHeader(http.StatusOK)
-      _, _ = w.Write([]byte("ok"))
-  })
-  srv, err := goxhttp.NewServer("HTTP", mux, log)
-  if err != nil { panic(err) }
-  if err := srv.StartWithGracefulShutdown(); err != nil {
-      log.Error("server exited", "error", err)
-  }
-  
-- Multiple servers example:
-  
-  log, _ := logger.NewLogger("APP")
-  mgr := goxhttp.NewServerManager(log)
-  api, _ := goxhttp.NewServer("API", apiMux, log)
-  admin, _ := goxhttp.NewServer("ADMIN", adminMux, log)
-  mgr.AddServer(api)
-  mgr.AddServer(admin)
-  _ = mgr.StartAll()
+JSON API, one import:
 
----
-monetary (github.com/guilhermebr/gox/monetary)
-- What it is: Precise monetary arithmetic using integers (big.Int) with fiat and crypto assets.
-- Install: `go get github.com/guilhermebr/gox/monetary`
-- Key operations: create from string, add/sub/mul/div, compare, JSON marshal/unmarshal, parse/format.
-- Example usage:
-  
-  import (
-      "math/big"
-      "github.com/guilhermebr/gox/monetary"
-  )
-  usd100, _ := monetary.NewMonetaryFromString(monetary.USD, "100.50")
-  usd50,  _ := monetary.NewMonetaryFromString(monetary.USD, "50.25")
-  sum, _ := usd100.Add(usd50) // 150.75
-  btc, _ := monetary.NewMonetaryFromString(monetary.BTC, "0.00123456")
-  amount := big.NewInt(10050)
-  usd, _ := monetary.NewMonetary(monetary.USD, amount)
-  asset, ok := monetary.FindAssetBySymbol("BTC")
-  _ = asset
-  _ = ok
-
----
-postgres (github.com/guilhermebr/gox/postgres)
-- What it is: Simple constructor for a pgx connection pool using env-driven config.
-- Install: `go get github.com/guilhermebr/gox/postgres`
-- Default env vars (prefix example: DB):
-  - DB_DATABASE_HOST default: localhost
-  - DB_DATABASE_PORT default: 5432
-  - DB_DATABASE_USER required
-  - DB_DATABASE_PASSWORD required
-  - DB_DATABASE_NAME required
-  - DB_DATABASE_SSLMODE default: disable
-  - DB_DATABASE_POOL_MIN_SIZE default: 2
-  - DB_DATABASE_POOL_MAX_SIZE default: 10
-- Example usage:
-  
-  import (
-      "context"
-      "github.com/guilhermebr/gox/postgres"
-  )
-  ctx := context.Background()
-  pool, err := postgres.New(ctx, "DB")
-  if err != nil { panic(err) }
-  // pool.Query(ctx, "SELECT 1")
-
----
-supabase (github.com/guilhermebr/gox/supabase)
-- What it is: Helper to construct a Supabase client from env vars.
-- Install: `go get github.com/guilhermebr/gox/supabase`
-- Default env vars (prefix example: APP):
-  - APP_SUPABASE_URL required
-  - APP_SUPABASE_KEY required
-- Example usage:
-  
-  import (
-      "github.com/guilhermebr/gox/supabase"
-  )
-  client, err := supabase.New("APP")
-  if err != nil { panic(err) }
-  // client.From("users").Select("*")
-
----
-Composition example (logger + http + postgres):
+```go
+package main
 
 import (
-    goxhttp "github.com/guilhermebr/gox/http"
-    "github.com/guilhermebr/gox/logger"
-    "github.com/guilhermebr/gox/postgres"
-    "context"
-    "net/http"
+	"net/http"
+	"os"
+
+	"github.com/guilhermebr/gox"
 )
 
 func main() {
-    log, err := logger.NewLogger("APP")
-    if err != nil { panic(err) }
-
-    ctx := context.Background()
-    db, err := postgres.New(ctx, "DB")
-    if err != nil { panic(err) }
-    _ = db
-
-    mux := http.NewServeMux()
-    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-        w.WriteHeader(http.StatusOK)
-        _, _ = w.Write([]byte("ok"))
-    })
-
-    srv, err := goxhttp.NewServer("HTTP", mux, log)
-    if err != nil { panic(err) }
-    if err := srv.StartWithGracefulShutdown(); err != nil {
-        log.Error("server exited", "error", err)
-    }
+	a := gox.MustNew("hello", gox.HTTP())
+	a.HandleFunc("GET /hello/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = gox.JSON(w, http.StatusOK, map[string]string{"hello": r.PathValue("name")})
+	})
+	if err := a.Run(); err != nil {
+		os.Exit(1)
+	}
 }
+```
+
+JSON API with Postgres and one migration, two imports:
+
+```go
+package main
+
+import (
+	"embed"
+	"errors"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/guilhermebr/gox"
+	"github.com/guilhermebr/gox/postgres"
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+type Config struct {
+	gox.BaseConfig
+	InvoiceTTL time.Duration `conf:"default:24h"`
+}
+
+func main() {
+	var cfg Config
+	a := gox.MustNew("billing",
+		gox.WithConfig(&cfg),
+		gox.HTTP(),
+		postgres.Enable(postgres.WithMigrations(migrations)),
+	)
+	db := postgres.From(a)
+
+	a.HandleFunc("GET /invoices/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var id string
+		err := db.QueryRow(r.Context(), "SELECT id FROM invoices WHERE id = $1", r.PathValue("id")).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			gox.Error(w, r, gox.NotFound("invoice %s", r.PathValue("id")))
+			return
+		}
+		if err != nil {
+			gox.Error(w, r, err)
+			return
+		}
+		_ = gox.JSON(w, http.StatusOK, map[string]string{"id": id})
+	})
+
+	if err := a.Run(); err != nil {
+		os.Exit(1)
+	}
+}
+```
+
+Server-rendered HTML app (templ), two imports plus templ:
+
+```go
+package main
+
+import (
+	"embed"
+	"io/fs"
+	"net/http"
+	"os"
+
+	"github.com/guilhermebr/gox"
+	"github.com/guilhermebr/gox/web"
+
+	"example.com/shop/views" // templ components: views.Layout, views.Home, views.SignForm
+)
+
+//go:embed static
+var static embed.FS
+
+type SignInput struct {
+	Name string `form:"name,required,min=2,max=40"`
+}
+
+func main() {
+	assets, _ := fs.Sub(static, "static")
+	a := gox.MustNew("shop",
+		gox.HTTP(),
+		web.Enable(web.WithStatic(assets), web.WithSessions(), web.WithLayout(views.Layout)),
+	)
+	a.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		web.PageFrom(r).Title = "Home"
+		_ = web.Render(w, r, views.Home())
+	})
+	a.HandleFunc("GET /sign", func(w http.ResponseWriter, r *http.Request) {
+		_ = web.Render(w, r, views.SignForm(web.PageFrom(r), SignInput{}, nil))
+	})
+	a.HandleFunc("POST /sign", func(w http.ResponseWriter, r *http.Request) {
+		in, ferrs, err := web.Form[SignInput](r)
+		if err != nil {
+			web.Error(w, r, err)
+			return
+		}
+		if ferrs != nil {
+			_ = web.RenderStatus(w, r, http.StatusUnprocessableEntity, views.SignForm(web.PageFrom(r), in, ferrs))
+			return
+		}
+		web.AddFlash(w, r, "success", "Thanks, "+in.Name)
+		web.Redirect(w, r, "/")
+	})
+	if err := a.Run(); err != nil {
+		os.Exit(1)
+	}
+}
+```
+
+A templ layout receives the page context and the body:
+
+```templ
+package views
+
+import "github.com/guilhermebr/gox/web"
+
+func Layout(page *web.Page, body templ.Component) templ.Component { return layout(page, body) }
+
+templ layout(page *web.Page, body templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head><meta charset="utf-8"/><title>{ page.Title }</title>@web.CSRFMeta(page)<link rel="stylesheet" href={ page.Asset("css/app.css") }/></head>
+		<body>
+			for _, f := range page.Flashes { <div class={ "flash", "flash-" + f.Kind }>{ f.Message }</div> }
+			<main>@body</main>
+		</body>
+	</html>
+}
+```
+
+A form component takes the page (for the CSRF field), the input and the field errors:
+
+```templ
+templ SignForm(page *web.Page, in SignInput, errs web.FieldErrors) {
+	<form method="post" action="/sign">
+		@web.CSRFField(page)
+		<input name="name" value={ in.Name }/>
+		if msg, ok := errs["name"]; ok { <span class="field-error">{ msg }</span> }
+		<button type="submit">Sign</button>
+	</form>
+}
+```
+
+# Project layout (the only supported one)
+
+```
+cmd/<name>/main.go            # gox.MustNew + route registration + a.Run()
+internal/<feature>/handler.go # net/http handlers for one feature
+internal/<feature>/views/     # templ components for that feature (HTML apps)
+web/layout/*.templ            # layout(s) (HTML apps)
+web/components/*.templ        # shared components (HTML apps)
+migrations/NNNN_name.up.sql   # golang-migrate files, embedded with //go:embed
+static/                       # embedded assets (HTML apps): css/, js/, img/
+.env.example                  # every <PREFIX>_* variable with its default
+Makefile                      # build, test, lint, generate (templ), run
+```
+
+Start order is fixed by stage, not by option order: datastores (StageDatastore) → clients (StageClient) → your components (StageUser) → public HTTP server (StageServer) → admin server. Stop is the reverse. `/readyz` turns green only after every component started; it turns red first on shutdown.
+
+## API: gox (root)
+
+import "github.com/guilhermebr/gox"
+
+```go
+const CodeOK, CodeCanceled, CodeUnknown, CodeInvalidArgument, CodeDeadlineExceeded, CodeNotFound, CodeAlreadyExists, CodePermissionDenied, CodeResourceExhausted, CodeFailedPrecondition, CodeAborted, CodeOutOfRange, CodeUnimplemented, CodeInternal, CodeUnavailable, CodeDataLoss, CodeUnauthenticated  // Codes.
+type App struct{ /* unexported */ }  // App is a built service: config loaded, logger ready, components constructed.
+func MustNew(name string, opts ...Option) *App  // MustNew is New for main(): --help and --version print and exit 0, any other error prints to stderr and exits 1.
+func New(name string, opts ...Option) (*App, error)  // New builds an App: it applies the options, loads and validates config in one pass, builds the logger, runs every component factory, and wires the admin server.
+func (a *App) Add(cs ...lifecycle.Component)  // Add registers user components at StageUser after New and before Run.
+func (a *App) Config() BaseConfig  // Config returns the framework configuration.
+func (a *App) ConfigPrefix() string  // ConfigPrefix returns the environment prefix config was loaded under ("BILLING", or "" for unprefixed), so features can name variables in their own error messages.
+func (a *App) HTTPClient() *http.Client  // HTTPClient returns the default outbound client.
+func (a *App) HandleFunc(pattern string, h http.HandlerFunc)  // HandleFunc registers a handler on the public mux using Go 1.22 patterns such as "GET /invoices/{id}".
+func (a *App) HasHTTP() bool  // HasHTTP reports whether HTTP() was declared.
+func (a *App) HasHTTPClient() bool  // HasHTTPClient reports whether HTTPClient() was declared.
+func (a *App) Health() *health.Registry  // Health returns the registry behind /healthz and /readyz.
+func (a *App) Log() *slog.Logger  // Log returns the service logger.
+func (a *App) MapError(err error) error  // MapError applies the registered mappers to err.
+func (a *App) Mux() *http.ServeMux  // Mux returns the public ServeMux.
+func (a *App) Name() string  // Name returns the service name given to New.
+func (a *App) Run() error  // Run starts the app and blocks until SIGINT or SIGTERM, or until a component fails fatally.
+func (a *App) RunContext(ctx context.Context) error  // RunContext is Run with a caller-supplied context: cancel it to shut down.
+func (a *App) Value(key any) (any, bool)  // Value returns a value stored by a feature package's Enable option.
+type BaseConfig = config.Base  // BaseConfig is the configuration every service has.
+type Builder struct{ /* unexported */ }  // Builder is the extension API feature packages use inside their Enable() option.
+func (b *Builder) Component(stage Stage, fn func(a *App) (lifecycle.Component, error))  // Component registers a factory that runs at the end of New, after config and logging are ready, in stage order.
+func (b *Builder) ConfigSection(name string, dst any, declaredBy string)  // ConfigSection registers a feature's config struct.
+func (b *Builder) ErrorRenderer(fn httpx.ErrorRenderer)  // ErrorRenderer registers a renderer for error responses (an HTML error page).
+func (b *Builder) Finish(fn func(a *App) error)  // Finish registers a function that runs at the end of New, after every component factory.
+func (b *Builder) Middleware(mw ...Middleware)  // Middleware adds middleware a feature package needs on every request.
+func (b *Builder) Set(key, value any)  // Set stores a value feature packages expose through their From accessor.
+func (b *Builder) Setup(fn func(a *App) error)  // Setup registers a function that runs at the end of New, after config and logging are ready and before any component factory.
+type CORSConfig = middleware.CORSConfig  // CORSConfig configures WithCORS.
+type Code = errors.Code  // Code classifies a coded error.
+func CodeOf(err error) Code  // CodeOf returns the code of err through wrapping: OK for nil, Unknown for foreign errors.
+type Envelope = errors.Envelope  // Envelope is the JSON error body every gox response uses.
+type ErrorMapper = errors.Mapper  // ErrorMapper translates a service's own errors into coded errors at the boundary.
+type HTTPOption func(*httpOptions)  // HTTPOption configures the public HTTP server declared with HTTP().
+func WithCORS(cfg CORSConfig) HTTPOption  // WithCORS enables CORS for the given configuration.
+type Middleware = middleware.Middleware  // Middleware wraps an http.Handler.
+type Option func(*Builder) error  // Option declares one thing the app is made of or one behaviour of it.
+func Component(c lifecycle.Component) Option  // Component adds any user component at StageUser.
+func HTTP(opts ...HTTPOption) Option  // HTTP declares the public HTTP server: a net/http ServeMux behind the default middleware chain, /healthz and /readyz on the public port, and 404/405 rendered as the error envelope.
+func HTTPClient() Option  // HTTPClient declares the default outbound client: timeouts and pool limits from HTTP_CLIENT_* config, trace and request-id propagation, and "User-Agent: <service>/<version>".
+func Periodic(name string, every time.Duration, fn func(context.Context) error) Option  // Periodic runs fn every interval as a component: staggered first run, panic recovery, errors logged, stopped with the app.
+func WithAuth(mw Middleware) Option  // WithAuth fills the auth slot of the chain: it runs after the default middleware and before WithMiddleware, for every route including the health probes, so an auth middleware should let those through.
+func WithConfig(dst any) Option  // WithConfig registers the service's own config struct, which must embed BaseConfig.
+func WithConfigPrefix(p string) Option  // WithConfigPrefix sets the environment prefix.
+func WithErrorMapper(m ErrorMapper) Option  // WithErrorMapper registers a mapper applied by gox.Error before rendering, so a service keeps its domain sentinels and maps them once.
+func WithLogger(l *slog.Logger) Option  // WithLogger replaces the logger gox would build from config.
+func WithMiddleware(mw ...Middleware) Option  // WithMiddleware appends middleware after the default chain (and after the auth slot), outermost first.
+func WithShutdownTimeout(d time.Duration) Option  // WithShutdownTimeout sets the default per-component stop budget.
+func WithVersion(v string) Option  // WithVersion sets the build version reported in logs and on /version.
+func WithoutAdminServer() Option  // WithoutAdminServer disables the ops server.
+type Stage int  // Stage orders component start-up.
+const StageDatastore, StageClient, StageUser, StageServer Stage  // Stages.
+func Aborted(format string, args ...any) *errors.Error  // Aborted creates a 409 error: a concurrency conflict; the client may retry.
+func AlreadyExists(format string, args ...any) *errors.Error  // AlreadyExists creates a 409 error: the resource already exists.
+func Canceled(format string, args ...any) *errors.Error  // Canceled creates a 499 error: the client went away.
+func DataLoss(format string, args ...any) *errors.Error  // DataLoss creates a 500 error.
+func DeadlineExceeded(format string, args ...any) *errors.Error  // DeadlineExceeded creates a 504 error.
+func Decode(r *http.Request, v any) error  // Decode reads a strict JSON body into v.
+func Error(w http.ResponseWriter, r *http.Request, err error)  // Error renders err as the standard envelope: the app's error mappers are applied, the status comes from the error's code, the request id is stamped, and server-side failures are logged with their cause.
+func FailedPrecondition(format string, args ...any) *errors.Error  // FailedPrecondition creates a 400 error: the system is not in the required state.
+func HTTPStatus(err error) int  // HTTPStatus returns the HTTP status err renders as.
+func Internal(format string, args ...any) *errors.Error  // Internal creates a 500 error with a public-safe message.
+func InvalidArgument(format string, args ...any) *errors.Error  // InvalidArgument creates a 400 error: the request is malformed or fails validation.
+func JSON(w http.ResponseWriter, status int, v any) error  // JSON writes v as JSON with the given status.
+func LoadConfig(name string, dst any) error  // LoadConfig loads dst (which must embed BaseConfig) from the environment under the service's default prefix, without building an App.
+func MustValue[T any](a *App, key any, accessor, option string) T  // MustValue is what feature accessors use: it returns the stored value or panics with the standard message naming the accessor that was called and the option that was missing, for example "gox: postgres.From called but postgres.Enable() was not passed to gox.New".
+func NewError(code Code, msg string) *errors.Error  // NewError creates a coded error with a public-safe message.
+func NotFound(format string, args ...any) *errors.Error  // NotFound creates a 404 error.
+func OutOfRange(format string, args ...any) *errors.Error  // OutOfRange creates a 400 error.
+func PermissionDenied(format string, args ...any) *errors.Error  // PermissionDenied creates a 403 error.
+func ResourceExhausted(format string, args ...any) *errors.Error  // ResourceExhausted creates a 429 error.
+func Unauthenticated(format string, args ...any) *errors.Error  // Unauthenticated creates a 401 error.
+func Unavailable(format string, args ...any) *errors.Error  // Unavailable creates a 503 error: retry later.
+func Unimplemented(format string, args ...any) *errors.Error  // Unimplemented creates a 501 error.
+func Unknown(format string, args ...any) *errors.Error  // Unknown creates a 500 error of unknown cause.
+func Value[T any](a *App, key any) (T, bool)  // Value is the typed form of App.Value.
+func WrapError(cause error, code Code, msg string) *errors.Error  // WrapError keeps cause for errors.Is and logs while msg is what clients see.
+```
+
+## Config: gox (root)
+
+<PREFIX>_SERVICE_NAME (string): service name; set by gox.New
+<PREFIX>_VERSION (string): build version; set by gox.WithVersion
+<PREFIX>_ENVIRONMENT (string, default development): development | staging | production
+<PREFIX>_HTTP_ADDR (string): listen address; PORT is honored when unset
+<PREFIX>_HTTP_READ_HEADER_TIMEOUT (duration, default 10s)
+<PREFIX>_HTTP_READ_TIMEOUT (duration, default 30s)
+<PREFIX>_HTTP_WRITE_TIMEOUT (duration, default 30s)
+<PREFIX>_HTTP_IDLE_TIMEOUT (duration, default 120s)
+<PREFIX>_HTTP_REQUEST_TIMEOUT (duration, default 30s): per-request deadline enforced by the middleware chain
+<PREFIX>_HTTP_MAX_BODY_BYTES (int64, default 1048576): request body limit in bytes
+<PREFIX>_ADMIN_ADDR (string, default :9090)
+<PREFIX>_SHUTDOWN_TIMEOUT (duration, default 30s): budget for each component's Stop
+<PREFIX>_SHUTDOWN_PRE_STOP_DELAY (duration, default 0s): wait after going not-ready before stopping
+<PREFIX>_LOG_LEVEL (string, default info): debug | info | warn | error
+<PREFIX>_LOG_FORMAT (string, default auto): auto | json | text
+<PREFIX>_OTEL_ENABLED (string, default auto): auto | true | false; auto is on in production or when an endpoint is set
+<PREFIX>_OTEL_ENDPOINT (string): OTLP collector host:port
+<PREFIX>_OTEL_PROTOCOL (string, default grpc): grpc | http
+<PREFIX>_OTEL_INSECURE (bool, default false): plaintext connection to the collector
+<PREFIX>_HTTP_CLIENT_TIMEOUT (duration, default 30s)
+<PREFIX>_HTTP_CLIENT_MAX_IDLE_CONNS (int, default 100)
+<PREFIX>_HTTP_CLIENT_IDLE_CONN_TIMEOUT (duration, default 90s)
+
+## API: postgres
+
+import "github.com/guilhermebr/gox/postgres"
+
+```go
+type Config struct{ URL string; MaxConns int32; MinConns int32; MaxConnLifetime time.Duration; MaxConnIdleTime time.Duration; HealthCheckPeriod time.Duration; ConnectTimeout time.Duration; Migrate bool }  // Config is the POSTGRES config section: BILLING_POSTGRES_URL and friends under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+type Option func(*options)  // Option configures Enable.
+func WithMigrations(fsys fs.FS) Option  // WithMigrations runs the SQL migrations in fsys (golang-migrate layout: NNNN_name.up.sql / .down.sql, anywhere in the tree) at boot, before the app reports ready.
+func Enable(opts ...Option) gox.Option  // Enable declares a Postgres pool: it registers the POSTGRES config section and a component at StageDatastore that connects and pings on Start (a lazy pool must never report healthy), runs migrations, exposes readiness, closes on Stop, and traces queries and pool stats.
+func From(a *gox.App) *pgxpool.Pool  // From returns the pool.
+func Migrate(ctx context.Context, url string, fsys fs.FS) error  // Migrate applies every pending up migration in fsys to the database at url.
+func New(ctx context.Context, prefix string) (*pgxpool.Pool, error)  // New builds a pool from the pre-framework variables (<PREFIX>_DATABASE_HOST, _PORT, _USER, _PASSWORD, _NAME, _SSLMODE, _POOL_MIN_SIZE, _POOL_MAX_SIZE).
+func Tx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (err error)  // Tx runs fn in a transaction: commit when fn returns nil, rollback otherwise (and on panic).
+```
+
+## Config: postgres (declared by postgres.Enable())
+
+<PREFIX>_POSTGRES_URL (string, required, secret): postgres://user:pass@host:5432/db?sslmode=require
+<PREFIX>_POSTGRES_MAX_CONNS (int32, default 10)
+<PREFIX>_POSTGRES_MIN_CONNS (int32, default 2)
+<PREFIX>_POSTGRES_MAX_CONN_LIFETIME (duration, default 1h): jittered so a fleet does not recycle in lockstep
+<PREFIX>_POSTGRES_MAX_CONN_IDLE_TIME (duration, default 15m)
+<PREFIX>_POSTGRES_HEALTH_CHECK_PERIOD (duration, default 1m)
+<PREFIX>_POSTGRES_CONNECT_TIMEOUT (duration, default 10s)
+<PREFIX>_POSTGRES_MIGRATE (bool, default true): run embedded migrations at boot (WithMigrations)
+
+## API: jwt
+
+import "github.com/guilhermebr/gox/jwt"
+
+```go
+const RefreshWindow  // RefreshWindow is how close to expiry a token must be for RefreshToken to issue a new one.
+var ErrInvalidToken error  // ErrInvalidToken indicates the token failed signature or validity checks.
+var ErrInvalidClaims error  // ErrInvalidClaims indicates the token's claims could not be decoded.
+var ErrNoSigningKey error  // ErrNoSigningKey is returned by GenerateToken on a verify-only service.
+type Claims struct{ UserID string; Email string; AccountType string; jwt.RegisteredClaims }  // Claims are the JWT claims issued and validated by Service.
+func ClaimsFromContext(ctx context.Context) (*Claims, bool)  // ClaimsFromContext returns the claims Auth stored for this request.
+type Config struct{ SecretKey string; PublicKey string; PrivateKey string; Issuer string; Expiry time.Duration }  // Config is the JWT config section: BILLING_JWT_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks that exactly one algorithm is configured and that the PEM keys parse.
+type Option func(*options)  // Option configures Enable.
+func WithAuth() Option  // WithAuth protects every route with Auth, except /healthz and /readyz so platform probes keep working.
+type Service struct{ /* unexported */ }  // Service signs and validates tokens with one algorithm: HS256 with a shared secret, or RS256 with an RSA key pair.
+func From(a *gox.App) *Service  // From returns the Service.
+func NewFromConfig(cfg Config) (*Service, error)  // NewFromConfig builds a Service from a validated Config.
+func NewHS256(secret []byte, issuer string, expiry time.Duration) *Service  // NewHS256 creates a Service that signs and verifies with a shared secret.
+func NewRS256(priv *rsa.PrivateKey, pub *rsa.PublicKey, issuer string, expiry time.Duration) *Service  // NewRS256 creates a Service that verifies with pub and, when priv is not nil, signs with it.
+func (s *Service) GenerateToken(userID, email, accountType string) (string, error)  // GenerateToken issues a signed token for the given user.
+func (s *Service) RefreshToken(tokenString string) (string, error)  // RefreshToken returns a fresh token when the supplied one is within RefreshWindow of expiry, otherwise the original token unchanged.
+func (s *Service) ValidateToken(tokenString string) (*Claims, error)  // ValidateToken parses and verifies a token, returning its claims.
+func Auth(svc *Service) gox.Middleware  // Auth is the middleware for gox.WithAuth: it validates the bearer token with svc and stores the claims for ClaimsFromContext.
+func Enable(opts ...Option) gox.Option  // Enable registers the JWT config section and builds the Service from it.
+```
+
+## Config: jwt (declared by jwt.Enable())
+
+<PREFIX>_JWT_SECRET_KEY (string, secret): HS256 secret; set this or PUBLIC_KEY
+<PREFIX>_JWT_PUBLIC_KEY (string): PEM RSA public key for RS256 verification
+<PREFIX>_JWT_PRIVATE_KEY (string, secret): PEM RSA private key for RS256 signing; omit on verify-only services
+<PREFIX>_JWT_ISSUER (string, default gox)
+<PREFIX>_JWT_EXPIRY (duration, default 24h)
+
+## API: supabase
+
+import "github.com/guilhermebr/gox/supabase"
+
+```go
+var ErrNilClient error  // ErrNilClient is returned by the auth helpers when called with a nil client.
+type Config struct{ URL string; Key string }  // Config is the SUPABASE config section: BILLING_SUPABASE_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the URL is absolute.
+type UserInfo struct{ ID string; Email string; Phone string; EmailConfirmed bool; PhoneConfirmed bool; Role string; UserMetadata map[string]any; AppMetadata map[string]any; LastSignInAt *time.Time; CreatedAt time.Time; UpdatedAt time.Time }  // UserInfo is a domain-agnostic representation of a Supabase Auth user.
+func GetUserFromToken(_ context.Context, client *supabase.Client, token string) (*UserInfo, error)  // GetUserFromToken retrieves user information for the given access token.
+func AdminDeleteUser(_ context.Context, client *supabase.Client, userID string) error  // AdminDeleteUser deletes a user by ID.
+func Enable() gox.Option  // Enable registers the SUPABASE config section and a client component at StageClient whose readiness probes the project's auth health endpoint.
+func From(a *gox.App) *supabase.Client  // From returns the client.
+func New(prefix string) (*supabase.Client, error)  // New creates a client from <PREFIX>_SUPABASE_URL and <PREFIX>_SUPABASE_KEY. Deprecated: pass supabase.Enable() to gox.New and read the client with supabase.From.
+func NewFromConfig(cfg Config) (*supabase.Client, error)  // NewFromConfig creates a new Supabase client from a pre-loaded Config.
+func SignInWithEmail(_ context.Context, client *supabase.Client, email, password string) (string, error)  // SignInWithEmail authenticates a user with email and password.
+func SignUpWithEmail(_ context.Context, client *supabase.Client, email, password string, metadata map[string]any) (string, error)  // SignUpWithEmail registers a new user with email and password.
+```
+
+## Config: supabase (declared by supabase.Enable())
+
+<PREFIX>_SUPABASE_URL (string, required): project URL such as https://xyz.supabase.co
+<PREFIX>_SUPABASE_KEY (string, required, secret): anon or service role key
+
+## API: web
+
+import "github.com/guilhermebr/gox/web"
+
+```go
+const FieldCSRF  // FieldCSRF is the form field regular forms send the token in.
+const HeaderCSRF  // HeaderCSRF is the header HTMX and fetch callers send the token in.
+type API struct{ /* unexported */ }  // API calls the service's own JSON API as the signed-in user: the session token goes out as a bearer, request ids and trace context propagate, and a gox error envelope in a response becomes a coded error, so web.Error renders a backend 404 as a 404 page.
+func APIFrom(r *http.Request) *API  // APIFrom returns the request's backend client.
+func (a *API) Delete(ctx context.Context, path string) error  // Delete issues a DELETE.
+func (a *API) Get(ctx context.Context, path string, out any) error  // Get decodes the JSON at path into out (nil to ignore the body).
+func (a *API) Post(ctx context.Context, path string, in, out any) error  // Post sends in as JSON and decodes the response into out.
+func (a *API) Put(ctx context.Context, path string, in, out any) error  // Put sends in as JSON and decodes the response into out.
+type Config struct{ SessionSecret string; SessionName string; SessionMaxAge time.Duration; SecureCookies string; StaticPrefix string; BackendURL string }  // Config is the WEB config section: <PREFIX>_WEB_*.
+func (c *Config) Validate() error  // Validate checks the section.
+type ErrorPage func(page *Page, status int, code, message string) templ.Component  // ErrorPage renders an error for browser requests.
+type FieldErrors map[string]string  // FieldErrors maps a form field to its validation message, ready to be rendered next to the field.
+func Form[T any](r *http.Request) (T, FieldErrors, error)  // Form decodes an application/x-www-form-urlencoded or multipart body into T and validates it from struct tags: Email string `form:"email,required"` Age int `form:"age,min=18,max=120"` Note string `form:"note,max=280"` // max on strings is a length Tags []string `form:"tags"` Wait time.Duration `form:"wait"` Agree bool `form:"agree,required"` // required means checked Validation failures come back as FieldErrors with nil error; a body that is not a form, or a T that is not a struct, is an error.
+func (e FieldErrors) Error() string  // Error implements error so FieldErrors can travel as one.
+type Flash struct{ Kind string; Message string }  // Flash is a one-shot message shown on the next page: "success", "error", "info" and so on are the conventional kinds.
+type Layout func(page *Page, body templ.Component) templ.Component  // Layout wraps a page body.
+type Option func(*options)  // Option configures Enable.
+func WithBackend() Option  // WithBackend enables APIFrom: a per-request client for the service's own API at WEB_BACKEND_URL, authenticated with the session token.
+func WithErrorPage(p ErrorPage) Option  // WithErrorPage replaces the default error page.
+func WithLayout(l Layout) Option  // WithLayout sets the layout Render wraps pages in.
+func WithLoginPath(p string) Option  // WithLoginPath sets where RequireSession redirects (default /login).
+func WithSessionUser(fn func(r *http.Request, s *Session) (any, error)) Option  // WithSessionUser resolves Page.User once per request from the session (typically by calling the backend with APIFrom).
+func WithSessions() Option  // WithSessions enables the encrypted cookie session (SessionFrom) and CSRF checks on every state-changing request.
+func WithStatic(fsys fs.FS) Option  // WithStatic serves fsys under WEB_STATIC_PREFIX (default /static/) with content-hashed URLs in production; Page.Asset resolves names.
+type Page struct{ Title string; Path string; User any; Flashes []Flash; CSRFToken string; Nonce string; Data map[string]any; Request *http.Request }  // Page is the per-request context every layout receives.
+func PageFrom(r *http.Request) *Page  // PageFrom returns the request's Page, building it on first use: flashes are taken, the CSRF token is ensured and the session user is resolved.
+func (p *Page) Asset(name string) string  // Asset returns the URL for a static file: content-hashed in production, plain in development.
+type Session struct{ /* unexported */ }  // Session is the per-request, cookie-backed session.
+func SessionFrom(r *http.Request) *Session  // SessionFrom returns the request's session.
+func (s *Session) Clear()  // Clear drops every value and expires the cookie: logout.
+func (s *Session) Delete(key string)  // Delete removes a value.
+func (s *Session) Get(key string) (string, bool)  // Get returns a value.
+func (s *Session) IsAuthenticated() bool  // IsAuthenticated reports whether a token is stored.
+func (s *Session) Set(key, value string)  // Set stores a value.
+func (s *Session) SetToken(token string)  // SetToken stores the backend bearer token the API client sends.
+func (s *Session) Token() string  // Token returns the backend bearer token stored with SetToken, or "".
+func AddFlash(w http.ResponseWriter, r *http.Request, kind, message string)  // AddFlash queues a message for the next rendered page.
+func CSRFField(page *Page) templ.Component  // CSRFField renders the hidden input regular forms include.
+func CSRFMeta(page *Page) templ.Component  // CSRFMeta renders <meta name="csrf-token">; the scaffold's htmx config reads it into the X-CSRF-Token header on every request.
+func Enable(opts ...Option) gox.Option  // Enable declares the web layer.
+func Error(w http.ResponseWriter, r *http.Request, err error)  // Error renders err as an error page for browser requests and as the JSON envelope otherwise.
+func IsHTMX(r *http.Request) bool  // IsHTMX reports whether the request was made by htmx.
+func Partial(w http.ResponseWriter, r *http.Request, c templ.Component) error  // Partial writes c without the layout, whatever the request.
+func Redirect(w http.ResponseWriter, r *http.Request, url string)  // Redirect sends the browser to url: an HX-Redirect for htmx requests, a 303 See Other otherwise (the PRG pattern after a form post).
+func Render(w http.ResponseWriter, r *http.Request, c templ.Component) error  // Render writes c with status 200 inside the layout, or alone for htmx fragment requests.
+func RenderStatus(w http.ResponseWriter, r *http.Request, status int, c templ.Component) error  // RenderStatus is Render with an explicit status (422 for a form that failed validation).
+func RequireSession(next http.HandlerFunc) http.HandlerFunc  // RequireSession wraps a handler so requests without a session token are redirected to the login path (WithLoginPath, default /login).
+```
+
+## Config: web (declared by web.Enable())
+
+<PREFIX>_WEB_SESSION_SECRET (string, secret): key for the session cookie; at least 32 bytes; required by WithSessions
+<PREFIX>_WEB_SESSION_NAME (string, default session)
+<PREFIX>_WEB_SESSION_MAX_AGE (duration, default 720h)
+<PREFIX>_WEB_SECURE_COOKIES (string, default auto): auto | true | false; auto is on in production or behind X-Forwarded-Proto https
+<PREFIX>_WEB_STATIC_PREFIX (string, default /static/)
+<PREFIX>_WEB_BACKEND_URL (string): base URL of the API this UI calls as the signed-in user; required by WithBackend
+
+# Conventions and contracts
+
+Error envelope (every error response, from handlers and from the framework alike):
+
+```json
+{"code": "not_found", "message": "invoice inv_1", "request_id": "8e03…", "details": {"field": "amount"}}
+```
+
+Codes and HTTP statuses: `invalid_argument` 400, `unauthenticated` 401, `permission_denied` 403, `not_found` 404, `already_exists` 409, `aborted` 409, `failed_precondition` 400, `resource_exhausted` 429, `unimplemented` 501 (405 for a wrong method), `internal` 500, `unavailable` 503, `deadline_exceeded` 504, `canceled` 499. Errors that are not gox errors render as `internal` with the message "internal error"; their text never reaches a client. Map your own sentinels once with `gox.WithErrorMapper`.
+
+Log keys (contract with dashboards): `request_id`, `trace_id`, `span_id`, `error`, `component`, `duration`. Access log fields: `method`, `path`, `route` (the mux pattern), `status`, `bytes`. Level by status: 5xx error, 4xx warn, else info. `/healthz` and `/readyz` are not logged.
+
+Metrics (Prometheus on the admin `/metrics`): `http_server_request_duration_seconds` and `http_server_active_requests` by `http_request_method`, `http_route`, `http_response_status_code`; `db_client_connection_count{state}` and `db_client_connection_max` with `postgres.Enable()`; Go runtime and process metrics.
+
+Middleware chain (fixed): error renderers → route capture → recovery → request id → tracing → metrics → logging → timeout (`HTTP_REQUEST_TIMEOUT`) → max bytes (`HTTP_MAX_BODY_BYTES`) → security headers → CORS (only `gox.WithCORS`) → feature middleware → auth (`gox.WithAuth`) → `gox.WithMiddleware` → mux.
+
+Forms (gox/web): `GET` renders the form; `POST` decodes with `web.Form[T]`, re-renders the same component with status 422 on `FieldErrors`, and on success calls `web.AddFlash` then `web.Redirect` (303, or `HX-Redirect` for htmx). CSRF is automatic with sessions: include `@web.CSRFField(page)` in forms and `@web.CSRFMeta(page)` in the layout head.
+
+Never:
+- Never add a router (chi, gin, echo), an ORM, or a DI framework. `net/http` mux, pgx, explicit options.
+- Never call `http.Error` or write error JSON by hand; use `gox.Error` / `web.Error`.
+- Never read env vars directly; add fields to your config struct (`gox.WithConfig`).
+- Never start goroutines that outlive a request outside a component or `gox.Periodic`; they would not be stopped on shutdown.
+- Never mutate the shared HTTP client; derive one per request (`web.APIFrom`, `httpclient.WithBearer`).
+- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need.
+- Never put datastore settings in `BaseConfig`; they are feature sections (`<PREFIX>_POSTGRES_URL`).
+

@@ -10,7 +10,7 @@ define foreach_module
 	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && $(1)) || exit 1; done
 endef
 
-.PHONY: all build test test-integration lint fmt fmt-check vet tidy vulncheck check-deps check-lint-rules generate generate-check ci help
+.PHONY: all build test test-integration lint fmt fmt-check vet tidy vulncheck check-deps check-lint-rules generate generate-check llm llm-check check-recipes ci help
 
 TEMPL_VERSION := $(shell grep -E 'github.com/a-h/templ ' web/go.mod | awk '{print $$2}')
 TEMPL := go run github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION)
@@ -61,6 +61,18 @@ generate:
 generate-check: generate
 	@git diff --exit-code -- '*_templ.go' || (echo "generated templ code is stale: run make generate" && exit 1)
 
+## llm: regenerate llm.txt from source (docs/llm fragments + go/doc)
+llm:
+	@go run ./cmd/gox docs
+
+## llm-check: fail if llm.txt is stale
+llm-check:
+	@go run ./cmd/gox docs -check
+
+## check-recipes: every recipe's Go block must build
+check-recipes:
+	@scripts/check-recipes.sh
+
 ## check-deps: prove the import-as-opt-in rule on the example binaries
 check-deps:
 	@scripts/check-deps.sh examples/minimal absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/golang-jwt/jwt/v5 github.com/a-h/templ
@@ -75,7 +87,7 @@ check-lint-rules:
 	@scripts/check-lint-rules.sh
 
 ## ci: the full check suite
-ci: fmt-check vet lint test generate-check check-deps check-lint-rules
+ci: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules
 
 ## help: list targets
 help:
