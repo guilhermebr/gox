@@ -460,3 +460,24 @@ func TestBearerValidatesTokensAndStoresThePrincipal(t *testing.T) {
 		}
 	})
 }
+
+func TestRouteCaptureCanResolveTheRouteBeforeTheMuxRuns(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/items", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) })
+	resolve := func(r *http.Request) string {
+		_, pattern := mux.Handler(r)
+		return pattern
+	}
+	var seen string
+	reject := func(_ http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = middleware.Route(r) // a middleware rejecting before the mux still knows the route
+			w.WriteHeader(http.StatusForbidden)
+		})
+	}
+	h := middleware.Chain(middleware.RouteCapture(middleware.WithRouteResolver(resolve)), reject)(mux)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/items", nil))
+	if seen != "POST /api/items" {
+		t.Fatalf("Route before the mux = %q", seen)
+	}
+}

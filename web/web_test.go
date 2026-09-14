@@ -428,3 +428,33 @@ func TestFormPRGPattern(t *testing.T) {
 		t.Fatalf("valid = %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 }
+
+func TestCSRFAppliesToFormsNotToJSONOrExemptPrefixes(t *testing.T) {
+	t.Setenv("SHOP_WEB_SESSION_SECRET", "0123456789abcdef0123456789abcdef")
+	c, base := run(t, []web.Option{web.WithSessions(), web.WithCSRFExempt("/webhooks/")}, func(a *gox.App) {
+		a.HandleFunc("POST /api/items", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) })
+		a.HandleFunc("POST /form", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) })
+		a.HandleFunc("POST /webhooks/stripe", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) })
+	})
+
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/items", strings.NewReader(`{"name":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("JSON POST without a token = %d; JSON requests cannot be forged cross-site without CORS", resp.StatusCode)
+	}
+
+	resp, _ = postForm(t, c, base+"/form", url.Values{"name": {"x"}})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("form POST without a token = %d, want 403", resp.StatusCode)
+	}
+
+	resp, _ = postForm(t, c, base+"/webhooks/stripe", url.Values{"event": {"paid"}})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("exempt prefix = %d, want 201", resp.StatusCode)
+	}
+}

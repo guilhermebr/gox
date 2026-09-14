@@ -26,6 +26,7 @@ type options struct {
 	errorPage   ErrorPage
 	resolveUser func(r *http.Request, s *Session) (any, error)
 	loginPath   string
+	csrfExempt  []string
 }
 
 // Option configures Enable.
@@ -66,6 +67,15 @@ func WithSessionUser(fn func(r *http.Request, s *Session) (any, error)) Option {
 	return func(o *options) { o.resolveUser = fn }
 }
 
+// WithCSRFExempt skips the CSRF check for paths with these prefixes, for
+// endpoints that third parties call with their own authentication
+// (webhooks). JSON requests are never checked: a cross-site request cannot
+// send application/json with cookies without a CORS preflight, which is off
+// by default.
+func WithCSRFExempt(prefixes ...string) Option {
+	return func(o *options) { o.csrfExempt = append(o.csrfExempt, prefixes...) }
+}
+
 // WithLoginPath sets where RequireSession redirects (default /login).
 func WithLoginPath(p string) Option {
 	return func(o *options) { o.loginPath = p }
@@ -84,6 +94,7 @@ type feature struct {
 	loginPath   string
 	client      *http.Client
 	backend     bool
+	csrfExempt  []string
 }
 
 type featureKey struct{}
@@ -109,7 +120,7 @@ func Enable(opts ...Option) gox.Option {
 		}
 		cfg := &Config{}
 		b.ConfigSection("WEB", cfg, "web.Enable()")
-		f := &feature{cfg: cfg, layout: o.layout, errorPage: o.errorPage, resolveUser: o.resolveUser, loginPath: o.loginPath, backend: o.backend}
+		f := &feature{cfg: cfg, layout: o.layout, errorPage: o.errorPage, resolveUser: o.resolveUser, loginPath: o.loginPath, backend: o.backend, csrfExempt: o.csrfExempt}
 
 		b.Middleware(f.middleware(&o))
 		b.ErrorRenderer(f.errorRenderer)

@@ -59,9 +59,13 @@ func HTTP(opts ...HTTPOption) Option {
 			if err != nil {
 				return nil, err
 			}
+			mux := httpserver.NewMux()
 			chain := []Middleware{
 				withErrorRenderers(b.renderers),
-				middleware.RouteCapture(),
+				middleware.RouteCapture(middleware.WithRouteResolver(func(r *http.Request) string {
+					_, pattern := mux.Handler(r)
+					return pattern
+				})),
 				middleware.Recovery(a.log),
 				middleware.RequestID(),
 				middleware.Tracing(a.otel.Tracer, a.otel.Propagator),
@@ -81,7 +85,6 @@ func HTTP(opts ...HTTPOption) Option {
 			}
 			chain = append(chain, b.middleware...)
 
-			mux := httpserver.NewMux()
 			httpserver.RegisterHealth(mux, a.health)
 			handler := middleware.Chain(chain...)(httpserver.Handler(mux))
 			srv := httpserver.New(httpserver.Config{

@@ -33,12 +33,25 @@ func csrfToken(s *Session) string {
 	return t
 }
 
-// csrfMiddleware refuses state-changing requests whose token does not match
-// the session's. Safe methods pass. It runs only when sessions are enabled.
+// csrfMiddleware refuses form submissions whose token does not match the
+// session's. Safe methods pass, exempt prefixes pass, and so do requests
+// whose body is not a form (JSON APIs): browsers cannot send those
+// cross-site with cookies without a CORS preflight, and the session cookie
+// is SameSite=Lax. It runs only when sessions are enabled.
 func (f *feature) csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+			next.ServeHTTP(w, r)
+			return
+		}
+		for _, p := range f.csrfExempt {
+			if strings.HasPrefix(r.URL.Path, p) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "" && !isForm(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
