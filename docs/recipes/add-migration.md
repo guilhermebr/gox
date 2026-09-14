@@ -19,25 +19,34 @@ ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'open';
 ALTER TABLE invoices DROP COLUMN status;
 ```
 
-```go path=main.go
+```go path=migrations/migrations.go
+// Package migrations embeds the SQL files; //go:embed cannot reach outside
+// its own directory, so the files live next to this file.
+package migrations
+
+import "embed"
+
+//go:embed *.sql
+var FS embed.FS
+```
+
+```go path=cmd/billing/main.go
 package main
 
 import (
-	"embed"
 	"os"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/postgres"
-)
 
-//go:embed migrations/*.sql
-var migrations embed.FS
+	"example.com/shop/migrations"
+)
 
 func main() {
 	// Migrations run at boot, after the pool pings and before /readyz is green.
 	// Set BILLING_POSTGRES_MIGRATE=false to skip them and run
-	// postgres.Migrate(ctx, url, migrations) from a deploy step instead.
-	a := gox.MustNew("billing", gox.HTTP(), postgres.Enable(postgres.WithMigrations(migrations)))
+	// postgres.Migrate(ctx, url, migrations.FS) from a deploy step instead.
+	a := gox.MustNew("billing", gox.HTTP(), postgres.Enable(postgres.WithMigrations(migrations.FS)))
 	if err := a.Run(); err != nil {
 		os.Exit(1)
 	}

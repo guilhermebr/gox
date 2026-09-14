@@ -10,7 +10,7 @@ Rules that always hold:
 - Accessors for undeclared features panic with a message naming the option to add; read the message and add the option.
 - Every service gets, without writing code for it: structured logs with request ids, traces and metrics, `/healthz` and `/readyz` on the public port, an admin server on `:9090` with `/metrics`, `/healthz`, `/readyz`, `/version`, `/debug/pprof/`, graceful shutdown on SIGTERM.
 
-Install: `go get github.com/guilhermebr/gox` (root); `go get github.com/guilhermebr/gox/postgres` (and so on) per feature. Go 1.26+.
+Install: `go get github.com/guilhermebr/gox` (root); `go get github.com/guilhermebr/gox/postgres` (and so on) per feature; HTML apps also `go get github.com/a-h/templ` and install the `templ` CLI at the same version. Go 1.26+.
 
 # Canonical mains (copy these)
 
@@ -43,7 +43,6 @@ JSON API with Postgres and one migration, two imports:
 package main
 
 import (
-	"embed"
 	"errors"
 	"net/http"
 	"os"
@@ -53,10 +52,9 @@ import (
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/postgres"
-)
 
-//go:embed migrations/*.sql
-var migrations embed.FS
+	"example.com/billing/migrations" // package migrations: //go:embed *.sql; var FS embed.FS
+)
 
 type Config struct {
 	gox.BaseConfig
@@ -68,7 +66,7 @@ func main() {
 	a := gox.MustNew("billing",
 		gox.WithConfig(&cfg),
 		gox.HTTP(),
-		postgres.Enable(postgres.WithMigrations(migrations)),
+		postgres.Enable(postgres.WithMigrations(migrations.FS)),
 	)
 	db := postgres.From(a)
 
@@ -92,45 +90,37 @@ func main() {
 }
 ```
 
-Server-rendered HTML app (templ), two imports plus templ:
+Server-rendered HTML app (templ), two imports plus templ. The form input struct lives in the views package so both `main` and the templ component can use it. Run `go get github.com/a-h/templ` in the service (the CLI version must match `gox/web`'s pin) and `templ generate` before building; set `<PREFIX>_WEB_SESSION_SECRET` (32+ bytes) in production:
 
 ```go
 package main
 
 import (
-	"embed"
-	"io/fs"
 	"net/http"
 	"os"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/web"
 
-	"example.com/shop/views" // templ components: views.Layout, views.Home, views.SignForm
+	"example.com/shop/internal/guestbook/views" // templ components: views.Home, views.SignForm, views.SignInput
+	"example.com/shop/static"                   // package static: //go:embed css js; var FS embed.FS
+	"example.com/shop/web/layout"               // templ layout: layout.Layout
 )
 
-//go:embed static
-var static embed.FS
-
-type SignInput struct {
-	Name string `form:"name,required,min=2,max=40"`
-}
-
 func main() {
-	assets, _ := fs.Sub(static, "static")
 	a := gox.MustNew("shop",
 		gox.HTTP(),
-		web.Enable(web.WithStatic(assets), web.WithSessions(), web.WithLayout(views.Layout)),
+		web.Enable(web.WithStatic(static.FS), web.WithSessions(), web.WithLayout(layout.Layout)),
 	)
 	a.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		web.PageFrom(r).Title = "Home"
+		web.PageFrom(r).Title = "Home" // set Title before Render; the layout prints it
 		_ = web.Render(w, r, views.Home())
 	})
 	a.HandleFunc("GET /sign", func(w http.ResponseWriter, r *http.Request) {
-		_ = web.Render(w, r, views.SignForm(web.PageFrom(r), SignInput{}, nil))
+		_ = web.Render(w, r, views.SignForm(web.PageFrom(r), views.SignInput{}, nil))
 	})
 	a.HandleFunc("POST /sign", func(w http.ResponseWriter, r *http.Request) {
-		in, ferrs, err := web.Form[SignInput](r)
+		in, ferrs, err := web.Form[views.SignInput](r)
 		if err != nil {
 			web.Error(w, r, err)
 			return
@@ -148,16 +138,16 @@ func main() {
 }
 ```
 
-A templ layout receives the page context and the body:
+A templ layout (`web/layout/layout.templ`) receives the page context and the body:
 
 ```templ
-package views
+package layout
 
 import "github.com/guilhermebr/gox/web"
 
-func Layout(page *web.Page, body templ.Component) templ.Component { return layout(page, body) }
+func Layout(page *web.Page, body templ.Component) templ.Component { return shell(page, body) }
 
-templ layout(page *web.Page, body templ.Component) {
+templ shell(page *web.Page, body templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head><meta charset="utf-8"/><title>{ page.Title }</title>@web.CSRFMeta(page)<link rel="stylesheet" href={ page.Asset("css/app.css") }/></head>
@@ -169,9 +159,17 @@ templ layout(page *web.Page, body templ.Component) {
 }
 ```
 
-A form component takes the page (for the CSRF field), the input and the field errors:
+A form component (`internal/guestbook/views/sign.templ`) declares the input struct and takes the page (for the CSRF field), the input and the field errors keyed by form field name:
 
 ```templ
+package views
+
+import "github.com/guilhermebr/gox/web"
+
+type SignInput struct {
+	Name string `form:"name,required,min=2,max=40"`
+}
+
 templ SignForm(page *web.Page, in SignInput, errs web.FieldErrors) {
 	<form method="post" action="/sign">
 		@web.CSRFField(page)
@@ -182,21 +180,87 @@ templ SignForm(page *web.Page, in SignInput, errs web.FieldErrors) {
 }
 ```
 
+A custom error page (`web/layout/errors.templ`) is a body fragment; gox wraps it in the layout. Set the title in the Go wrapper, since the layout prints it before the body renders:
+
+```templ
+package layout
+
+import (
+	"fmt"
+	"github.com/guilhermebr/gox/web"
+)
+
+func ErrorPage(page *web.Page, status int, code, message string) templ.Component {
+	page.Title = fmt.Sprint(status)
+	return errorBody(status, message)
+}
+
+templ errorBody(status int, message string) {
+	<h1>{ fmt.Sprint(status) }</h1>
+	<p>{ message }</p>
+}
+```
+
 # Project layout (the only supported one)
 
 ```
-cmd/<name>/main.go            # gox.MustNew + route registration + a.Run()
-internal/<feature>/handler.go # net/http handlers for one feature
+cmd/<name>/main.go            # gox.MustNew + <feature>.Register(a) calls + a.Run()
+internal/<feature>/handler.go # net/http handlers for one feature; exposes Register(a *gox.App)
 internal/<feature>/views/     # templ components for that feature (HTML apps)
 web/layout/*.templ            # layout(s) (HTML apps)
 web/components/*.templ        # shared components (HTML apps)
-migrations/NNNN_name.up.sql   # golang-migrate files, embedded with //go:embed
-static/                       # embedded assets (HTML apps): css/, js/, img/
+migrations/migrations.go      # package migrations: //go:embed *.sql; var FS embed.FS
+migrations/NNNN_name.up.sql   # golang-migrate files (and .down.sql)
+static/static.go              # package static: //go:embed css js img; var FS embed.FS (HTML apps)
 .env.example                  # every <PREFIX>_* variable with its default
 Makefile                      # build, test, lint, generate (templ), run
 ```
 
+`//go:embed` cannot reach outside its own directory, so embedded files live in a package of their own and `main` imports it: `postgres.WithMigrations(migrations.FS)`, `web.WithStatic(static.FS)`.
+
+```go
+// migrations/migrations.go
+package migrations
+
+import "embed"
+
+//go:embed *.sql
+var FS embed.FS
+```
+
 Start order is fixed by stage, not by option order: datastores (StageDatastore) → clients (StageClient) → your components (StageUser) → public HTTP server (StageServer) → admin server. Stop is the reverse. `/readyz` turns green only after every component started; it turns red first on shutdown.
+
+# Testing
+
+Handler tests build the app without ports and serve its mux:
+
+```go
+func newApp(t *testing.T) *gox.App {
+	t.Helper()
+	a, err := gox.New("billing",
+		gox.WithoutAdminServer(),                                      // no :9090
+		gox.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))), // silent
+		gox.HTTP(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoices.Register(a, deps...)
+	return a
+}
+
+func TestGetInvoice(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newApp(t).Mux().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/invoices/nope", nil))
+	// rec.Code == 404; body is the envelope {"code":"not_found",...}
+}
+```
+
+Facts to rely on:
+- `gox.New` reads the real environment; set variables with `t.Setenv("BILLING_X", ...)`. Only `HTTP()` needs nothing.
+- `a.Mux()` is the bare mux: handler code, `gox.Error` and `gox.JSON` work; the middleware chain (request ids, timeout, envelope 404 for unmatched routes) is not applied. To test through the chain, run `a.RunContext(ctx)` in a goroutine on a free port (`t.Setenv("BILLING_HTTP_ADDR", "127.0.0.1:0")` is not enough; pick a free port first), wait for `a.Health().IsReady()`, and use `http.Get`.
+- Postgres-backed handlers: give the handler its dependencies explicitly (`invoices.New(db)`) so tests pass a `nil` pool or a fake, and keep database tests behind `//go:build integration` with `DATABASE_URL`. `postgres.Enable()` in a test app requires `<PREFIX>_POSTGRES_URL` and pings at `Run`, not at `New`.
+- gox/web pages: serve the mux the same way; `web.Render` needs the web middleware, so test HTML handlers through the chain (free port) or test the templ components directly with `component.Render(ctx, &buf)`.
 
 ## API: gox (root)
 
@@ -398,8 +462,8 @@ func SignUpWithEmail(_ context.Context, client *supabase.Client, email, password
 import "github.com/guilhermebr/gox/web"
 
 ```go
-const FieldCSRF  // FieldCSRF is the form field regular forms send the token in.
-const HeaderCSRF  // HeaderCSRF is the header HTMX and fetch callers send the token in.
+const FieldCSRF  // FieldCSRF ("_csrf") is the hidden form field regular forms send the token in; a missing or wrong token is a 403.
+const HeaderCSRF  // HeaderCSRF ("X-CSRF-Token") is the header htmx and fetch callers send the token in.
 type API struct{ /* unexported */ }  // API calls the service's own JSON API as the signed-in user: the session token goes out as a bearer, request ids and trace context propagate, and a gox error envelope in a response becomes a coded error, so web.Error renders a backend 404 as a 404 page.
 func APIFrom(r *http.Request) *API  // APIFrom returns the request's backend client.
 func (a *API) Delete(ctx context.Context, path string) error  // Delete issues a DELETE.
@@ -408,9 +472,9 @@ func (a *API) Post(ctx context.Context, path string, in, out any) error  // Post
 func (a *API) Put(ctx context.Context, path string, in, out any) error  // Put sends in as JSON and decodes the response into out.
 type Config struct{ SessionSecret string; SessionName string; SessionMaxAge time.Duration; SecureCookies string; StaticPrefix string; BackendURL string }  // Config is the WEB config section: <PREFIX>_WEB_*.
 func (c *Config) Validate() error  // Validate checks the section.
-type ErrorPage func(page *Page, status int, code, message string) templ.Component  // ErrorPage renders an error for browser requests.
+type ErrorPage func(page *Page, status int, code, message string) templ.Component  // ErrorPage renders an error for browser requests: status is the HTTP status, code the envelope code ("not_found"), message the public text.
 type FieldErrors map[string]string  // FieldErrors maps a form field to its validation message, ready to be rendered next to the field.
-func Form[T any](r *http.Request) (T, FieldErrors, error)  // Form decodes an application/x-www-form-urlencoded or multipart body into T and validates it from struct tags: Email string `form:"email,required"` Age int `form:"age,min=18,max=120"` Note string `form:"note,max=280"` // max on strings is a length Tags []string `form:"tags"` Wait time.Duration `form:"wait"` Agree bool `form:"agree,required"` // required means checked Validation failures come back as FieldErrors with nil error; a body that is not a form, or a T that is not a struct, is an error.
+func Form[T any](r *http.Request) (T, FieldErrors, error)  // Form decodes an application/x-www-form-urlencoded or multipart body into T and validates it from struct tags: Email string `form:"email,required"` Age int `form:"age,min=18,max=120"` Note string `form:"note,max=280"` // max on strings is a length Tags []string `form:"tags"` Wait time.Duration `form:"wait"` Agree bool `form:"agree,required"` // required means checked Validation failures come back as FieldErrors keyed by the form tag name ("email", not "Email") with nil error; messages are "required", "must be at least N characters", "must be at most N characters", "must be at least N", "must be at most N", "must be a whole number", "must be a number" and "must be a duration such as 30s or 5m".
 func (e FieldErrors) Error() string  // Error implements error so FieldErrors can travel as one.
 type Flash struct{ Kind string; Message string }  // Flash is a one-shot message shown on the next page: "success", "error", "info" and so on are the conventional kinds.
 type Layout func(page *Page, body templ.Component) templ.Component  // Layout wraps a page body.
@@ -438,7 +502,7 @@ func AddFlash(w http.ResponseWriter, r *http.Request, kind, message string)  // 
 func CSRFField(page *Page) templ.Component  // CSRFField renders the hidden input regular forms include.
 func CSRFMeta(page *Page) templ.Component  // CSRFMeta renders <meta name="csrf-token">; the scaffold's htmx config reads it into the X-CSRF-Token header on every request.
 func Enable(opts ...Option) gox.Option  // Enable declares the web layer.
-func Error(w http.ResponseWriter, r *http.Request, err error)  // Error renders err as an error page for browser requests and as the JSON envelope otherwise.
+func Error(w http.ResponseWriter, r *http.Request, err error)  // Error renders err as an error page for requests that want HTML (htmx, or Accept preferring text/html) and as the JSON envelope otherwise, with the same status either way.
 func IsHTMX(r *http.Request) bool  // IsHTMX reports whether the request was made by htmx.
 func Partial(w http.ResponseWriter, r *http.Request, c templ.Component) error  // Partial writes c without the layout, whatever the request.
 func Redirect(w http.ResponseWriter, r *http.Request, url string)  // Redirect sends the browser to url: an HX-Redirect for htmx requests, a 303 See Other otherwise (the PRG pattern after a form post).
@@ -464,6 +528,8 @@ Error envelope (every error response, from handlers and from the framework alike
 {"code": "not_found", "message": "invoice inv_1", "request_id": "8e03…", "details": {"field": "amount"}}
 ```
 
+`gox.Envelope` fields: `Code string`, `Message string`, `RequestID string`, `Details map[string]any`. The constructors return `*errors.Error` (from `gox/pkg/errors`, no import needed) with these methods: `WithDetail(key string, value any) *Error` (adds to `details`), `WithHTTPStatus(status int) *Error`, `Code() Code`, `Message() string`, `Details() map[string]any`, `Error() string`, `Unwrap() error`. Check codes with `gox.CodeOf(err) == gox.CodeNotFound`, never by comparing error text.
+
 Codes and HTTP statuses: `invalid_argument` 400, `unauthenticated` 401, `permission_denied` 403, `not_found` 404, `already_exists` 409, `aborted` 409, `failed_precondition` 400, `resource_exhausted` 429, `unimplemented` 501 (405 for a wrong method), `internal` 500, `unavailable` 503, `deadline_exceeded` 504, `canceled` 499. Errors that are not gox errors render as `internal` with the message "internal error"; their text never reaches a client. Map your own sentinels once with `gox.WithErrorMapper`.
 
 Log keys (contract with dashboards): `request_id`, `trace_id`, `span_id`, `error`, `component`, `duration`. Access log fields: `method`, `path`, `route` (the mux pattern), `status`, `bytes`. Level by status: 5xx error, 4xx warn, else info. `/healthz` and `/readyz` are not logged.
@@ -472,7 +538,9 @@ Metrics (Prometheus on the admin `/metrics`): `http_server_request_duration_seco
 
 Middleware chain (fixed): error renderers → route capture → recovery → request id → tracing → metrics → logging → timeout (`HTTP_REQUEST_TIMEOUT`) → max bytes (`HTTP_MAX_BODY_BYTES`) → security headers → CORS (only `gox.WithCORS`) → feature middleware → auth (`gox.WithAuth`) → `gox.WithMiddleware` → mux.
 
-Forms (gox/web): `GET` renders the form; `POST` decodes with `web.Form[T]`, re-renders the same component with status 422 on `FieldErrors`, and on success calls `web.AddFlash` then `web.Redirect` (303, or `HX-Redirect` for htmx). CSRF is automatic with sessions: include `@web.CSRFField(page)` in forms and `@web.CSRFMeta(page)` in the layout head.
+Forms (gox/web): `GET` renders the form; `POST` decodes with `web.Form[T]`, re-renders the same component with status 422 on `FieldErrors`, and on success calls `web.AddFlash` then `web.Redirect` (303, or `HX-Redirect` for htmx). `FieldErrors` is keyed by the `form` tag name; messages are `required`, `must be at least N characters`, `must be at most N characters`, `must be at least N`, `must be at most N`, `must be a whole number`, `must be a number`, `must be a duration such as 30s or 5m`. CSRF is automatic with sessions: include `@web.CSRFField(page)` (hidden field `_csrf`) in forms and `@web.CSRFMeta(page)` in the layout head (`X-CSRF-Token` header for htmx and fetch); a missing or wrong token is a 403.
+
+HTML errors (gox/web): `web.Enable` registers an error renderer, so `web.Error`, panics, timeouts, 404/405 and CSRF failures render the error page for requests that want HTML (htmx requests, or `Accept` preferring `text/html`) and the JSON envelope for everything else, with the same status either way. The `ErrorPage` function returns a body fragment; gox wraps it in the layout and `page` is never nil. Set `web.PageFrom(r).Title` before `web.Render`, in Go: templ components render lazily and the layout prints the title before the body.
 
 Never:
 - Never add a router (chi, gin, echo), an ORM, or a DI framework. `net/http` mux, pgx, explicit options.

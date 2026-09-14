@@ -29,7 +29,6 @@ JSON API with Postgres and one migration, two imports:
 package main
 
 import (
-	"embed"
 	"errors"
 	"net/http"
 	"os"
@@ -39,10 +38,9 @@ import (
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/postgres"
-)
 
-//go:embed migrations/*.sql
-var migrations embed.FS
+	"example.com/billing/migrations" // package migrations: //go:embed *.sql; var FS embed.FS
+)
 
 type Config struct {
 	gox.BaseConfig
@@ -54,7 +52,7 @@ func main() {
 	a := gox.MustNew("billing",
 		gox.WithConfig(&cfg),
 		gox.HTTP(),
-		postgres.Enable(postgres.WithMigrations(migrations)),
+		postgres.Enable(postgres.WithMigrations(migrations.FS)),
 	)
 	db := postgres.From(a)
 
@@ -78,45 +76,37 @@ func main() {
 }
 ```
 
-Server-rendered HTML app (templ), two imports plus templ:
+Server-rendered HTML app (templ), two imports plus templ. The form input struct lives in the views package so both `main` and the templ component can use it. Run `go get github.com/a-h/templ` in the service (the CLI version must match `gox/web`'s pin) and `templ generate` before building; set `<PREFIX>_WEB_SESSION_SECRET` (32+ bytes) in production:
 
 ```go
 package main
 
 import (
-	"embed"
-	"io/fs"
 	"net/http"
 	"os"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/web"
 
-	"example.com/shop/views" // templ components: views.Layout, views.Home, views.SignForm
+	"example.com/shop/internal/guestbook/views" // templ components: views.Home, views.SignForm, views.SignInput
+	"example.com/shop/static"                   // package static: //go:embed css js; var FS embed.FS
+	"example.com/shop/web/layout"               // templ layout: layout.Layout
 )
 
-//go:embed static
-var static embed.FS
-
-type SignInput struct {
-	Name string `form:"name,required,min=2,max=40"`
-}
-
 func main() {
-	assets, _ := fs.Sub(static, "static")
 	a := gox.MustNew("shop",
 		gox.HTTP(),
-		web.Enable(web.WithStatic(assets), web.WithSessions(), web.WithLayout(views.Layout)),
+		web.Enable(web.WithStatic(static.FS), web.WithSessions(), web.WithLayout(layout.Layout)),
 	)
 	a.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		web.PageFrom(r).Title = "Home"
+		web.PageFrom(r).Title = "Home" // set Title before Render; the layout prints it
 		_ = web.Render(w, r, views.Home())
 	})
 	a.HandleFunc("GET /sign", func(w http.ResponseWriter, r *http.Request) {
-		_ = web.Render(w, r, views.SignForm(web.PageFrom(r), SignInput{}, nil))
+		_ = web.Render(w, r, views.SignForm(web.PageFrom(r), views.SignInput{}, nil))
 	})
 	a.HandleFunc("POST /sign", func(w http.ResponseWriter, r *http.Request) {
-		in, ferrs, err := web.Form[SignInput](r)
+		in, ferrs, err := web.Form[views.SignInput](r)
 		if err != nil {
 			web.Error(w, r, err)
 			return
@@ -134,16 +124,16 @@ func main() {
 }
 ```
 
-A templ layout receives the page context and the body:
+A templ layout (`web/layout/layout.templ`) receives the page context and the body:
 
 ```templ
-package views
+package layout
 
 import "github.com/guilhermebr/gox/web"
 
-func Layout(page *web.Page, body templ.Component) templ.Component { return layout(page, body) }
+func Layout(page *web.Page, body templ.Component) templ.Component { return shell(page, body) }
 
-templ layout(page *web.Page, body templ.Component) {
+templ shell(page *web.Page, body templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head><meta charset="utf-8"/><title>{ page.Title }</title>@web.CSRFMeta(page)<link rel="stylesheet" href={ page.Asset("css/app.css") }/></head>
@@ -155,9 +145,17 @@ templ layout(page *web.Page, body templ.Component) {
 }
 ```
 
-A form component takes the page (for the CSRF field), the input and the field errors:
+A form component (`internal/guestbook/views/sign.templ`) declares the input struct and takes the page (for the CSRF field), the input and the field errors keyed by form field name:
 
 ```templ
+package views
+
+import "github.com/guilhermebr/gox/web"
+
+type SignInput struct {
+	Name string `form:"name,required,min=2,max=40"`
+}
+
 templ SignForm(page *web.Page, in SignInput, errs web.FieldErrors) {
 	<form method="post" action="/sign">
 		@web.CSRFField(page)
@@ -165,5 +163,26 @@ templ SignForm(page *web.Page, in SignInput, errs web.FieldErrors) {
 		if msg, ok := errs["name"]; ok { <span class="field-error">{ msg }</span> }
 		<button type="submit">Sign</button>
 	</form>
+}
+```
+
+A custom error page (`web/layout/errors.templ`) is a body fragment; gox wraps it in the layout. Set the title in the Go wrapper, since the layout prints it before the body renders:
+
+```templ
+package layout
+
+import (
+	"fmt"
+	"github.com/guilhermebr/gox/web"
+)
+
+func ErrorPage(page *web.Page, status int, code, message string) templ.Component {
+	page.Title = fmt.Sprint(status)
+	return errorBody(status, message)
+}
+
+templ errorBody(status int, message string) {
+	<h1>{ fmt.Sprint(status) }</h1>
+	<p>{ message }</p>
 }
 ```

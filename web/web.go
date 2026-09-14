@@ -98,7 +98,9 @@ func featureFrom(r *http.Request) *feature {
 
 // Enable declares the web layer. It requires gox.HTTP() and registers the
 // WEB config section, the request middleware (page context, sessions,
-// CSRF, HTML error rendering) and the static handler.
+// CSRF), the static handler, and an error renderer that turns every
+// rejection into the error page for requests that want HTML (htmx, or
+// Accept preferring text/html) while other clients keep the JSON envelope.
 func Enable(opts ...Option) gox.Option {
 	return func(b *gox.Builder) error {
 		o := options{layout: defaultLayout, errorPage: defaultErrorPage, loginPath: "/login"}

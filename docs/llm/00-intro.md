@@ -10,4 +10,4 @@ Rules that always hold:
 - Accessors for undeclared features panic with a message naming the option to add; read the message and add the option.
 - Every service gets, without writing code for it: structured logs with request ids, traces and metrics, `/healthz` and `/readyz` on the public port, an admin server on `:9090` with `/metrics`, `/healthz`, `/readyz`, `/version`, `/debug/pprof/`, graceful shutdown on SIGTERM.
 
-Install: `go get github.com/guilhermebr/gox` (root); `go get github.com/guilhermebr/gox/postgres` (and so on) per feature. Go 1.26+.
+Install: `go get github.com/guilhermebr/gox` (root); `go get github.com/guilhermebr/gox/postgres` (and so on) per feature; HTML apps also `go get github.com/a-h/templ` and install the `templ` CLI at the same version. Go 1.26+.

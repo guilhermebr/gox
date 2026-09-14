@@ -19,8 +19,11 @@ import (
 // layout owns <html>, <head> and the shell.
 type Layout func(page *Page, body templ.Component) templ.Component
 
-// ErrorPage renders an error for browser requests. status is the HTTP
-// status, code the envelope code ("not_found"), message the public text.
+// ErrorPage renders an error for browser requests: status is the HTTP
+// status, code the envelope code ("not_found"), message the public text. It
+// returns a body fragment that gox wraps in the layout; page is never nil.
+// Set page.Title inside the function, before returning, because the layout
+// prints it before the body renders.
 type ErrorPage func(page *Page, status int, code, message string) templ.Component
 
 // IsHTMX reports whether the request was made by htmx.
@@ -76,8 +79,9 @@ func Redirect(w http.ResponseWriter, r *http.Request, url string) {
 	http.Redirect(w, r, url, http.StatusSeeOther)
 }
 
-// Error renders err as an error page for browser requests and as the JSON
-// envelope otherwise. It applies the app's error mappers like gox.Error.
+// Error renders err as an error page for requests that want HTML (htmx, or
+// Accept preferring text/html) and as the JSON envelope otherwise, with the
+// same status either way. It applies the app's error mappers like gox.Error.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
 	httpx.Error(w, r, err)
 }

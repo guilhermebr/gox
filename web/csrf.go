@@ -15,10 +15,10 @@ import (
 	"github.com/guilhermebr/gox/pkg/httpx"
 )
 
-// HeaderCSRF is the header HTMX and fetch callers send the token in.
+// HeaderCSRF ("X-CSRF-Token") is the header htmx and fetch callers send the token in.
 const HeaderCSRF = "X-CSRF-Token"
 
-// FieldCSRF is the form field regular forms send the token in.
+// FieldCSRF ("_csrf") is the hidden form field regular forms send the token in; a missing or wrong token is a 403.
 const FieldCSRF = "_csrf"
 
 // csrfToken returns the session's token, creating it on first use.

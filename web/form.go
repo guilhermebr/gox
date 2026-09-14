@@ -35,8 +35,12 @@ func (e FieldErrors) Error() string {
 //	Wait  time.Duration `form:"wait"`
 //	Agree bool          `form:"agree,required"`    // required means checked
 //
-// Validation failures come back as FieldErrors with nil error; a body that
-// is not a form, or a T that is not a struct, is an error.
+// Validation failures come back as FieldErrors keyed by the form tag name
+// ("email", not "Email") with nil error; messages are "required", "must be
+// at least N characters", "must be at most N characters", "must be at least
+// N", "must be at most N", "must be a whole number", "must be a number" and
+// "must be a duration such as 30s or 5m". A body that is not a form, or a T
+// that is not a struct, is an error.
 func Form[T any](r *http.Request) (T, FieldErrors, error) {
 	var out T
 	rv := reflect.ValueOf(&out).Elem()

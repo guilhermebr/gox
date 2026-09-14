@@ -10,6 +10,7 @@ same steps produce an HTML app; the differences are called out at the end.
 billing/
 ├── cmd/billing/main.go
 ├── internal/invoices/handler.go
+├── migrations/migrations.go               # package migrations: //go:embed *.sql; var FS embed.FS
 ├── migrations/000001_create_invoices.up.sql
 ├── migrations/000001_create_invoices.down.sql
 ├── .env.example
@@ -28,7 +29,6 @@ go get github.com/guilhermebr/gox github.com/guilhermebr/gox/postgres
 package main
 
 import (
-	"embed"
 	"os"
 	"time"
 
@@ -36,10 +36,8 @@ import (
 	"github.com/guilhermebr/gox/postgres"
 
 	"example.com/billing/internal/invoices"
+	"example.com/billing/migrations"
 )
-
-//go:embed migrations/*.sql
-var migrations embed.FS
 
 // Config holds the service's own settings next to the framework's.
 type Config struct {
@@ -53,7 +51,7 @@ func main() {
 		gox.WithConfig(&cfg),
 		gox.WithVersion(version),
 		gox.HTTP(),
-		postgres.Enable(postgres.WithMigrations(migrations)),
+		postgres.Enable(postgres.WithMigrations(migrations.FS)),
 	)
 	invoices.Register(a, cfg.InvoiceTTL)
 	if err := a.Run(); err != nil {
@@ -62,6 +60,18 @@ func main() {
 }
 
 var version = "dev" // set with -ldflags "-X main.version=$(git rev-parse --short HEAD)"
+```
+
+`migrations/migrations.go` is three lines, because `//go:embed` cannot reach
+outside its own directory:
+
+```go
+package migrations
+
+import "embed"
+
+//go:embed *.sql
+var FS embed.FS
 ```
 
 What `MustNew` did: applied the options, loaded `BILLING_*` in one pass

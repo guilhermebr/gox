@@ -13,8 +13,8 @@ cat "$(go list -m -f '{{.Dir}}' github.com/guilhermebr/gox)/llm.txt"
 ```
 cmd/<name>/main.go            gox.MustNew(...) + route registration + a.Run()
 internal/<feature>/           handlers (net/http) and, for HTML, views/*.templ
-migrations/                   NNNN_name.up.sql / .down.sql (postgres.WithMigrations)
-static/                       embedded assets (HTML apps)
+migrations/                   package migrations (//go:embed *.sql; var FS) + NNNN_name.up.sql / .down.sql
+static/                       package static (//go:embed css js; var FS) with the assets (HTML apps)
 .env.example                  every <PREFIX>_* variable
 ```
 
@@ -22,7 +22,7 @@ static/                       embedded assets (HTML apps)
 
 - **Add a route**: `a.HandleFunc("GET /things/{id}", handler)` in `main.go` or a feature's `Register(a *gox.App)`. Read path values with `r.PathValue("id")`, bodies with `gox.Decode`, respond with `gox.JSON`, fail with `gox.Error(w, r, gox.NotFound("thing %s", id))`.
 - **Add config**: a field on the service's `Config` struct (which embeds `gox.BaseConfig`) with a `conf` tag; document it in `.env.example`.
-- **Add a migration**: a new `migrations/NNNN_name.up.sql` (and `.down.sql`); it runs at boot.
+- **Add a migration**: a new `migrations/NNNN_name.up.sql` (and `.down.sql`); `postgres.WithMigrations(migrations.FS)` runs it at boot.
 - **Add a page** (HTML apps): a templ component taking typed params, rendered with `web.Render`; forms follow decode → 422 re-render → flash + redirect.
 - **Add a background job**: `gox.Periodic("name", interval, fn)` for timers; `gox.Component(c)` for anything with Start/Stop; never a bare goroutine.
 - **Add a health check**: implement `Ready(ctx) error` on your component, or `a.Health().AddReadiness("name", fn)`.
