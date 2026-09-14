@@ -62,6 +62,20 @@ func MustNew(name string, opts ...Option) *App {
 	return a
 }
 
+// LoadConfig loads dst (which must embed BaseConfig) from the environment
+// under the service's default prefix, without building an App. Use it when
+// a value in the config decides which options to pass to New, such as a
+// ROLE that selects components. New loads the same struct again; that is
+// cheap and keeps one source of truth.
+func LoadConfig(name string, dst any) error {
+	if _, ok := config.BaseOf(dst); !ok {
+		return fmt.Errorf("gox: LoadConfig: %T must embed gox.BaseConfig", dst)
+	}
+	base, _ := config.BaseOf(dst)
+	base.ServiceName = name
+	return config.Load(newBuilder(name).prefixOrDefault(), dst)
+}
+
 // ---- Feature options provided by the root ----
 
 // Component adds any user component at StageUser. It is the escape hatch

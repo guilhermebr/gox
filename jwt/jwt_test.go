@@ -1,6 +1,7 @@
 package jwt_test
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -8,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,6 +28,17 @@ func setArgs(t *testing.T) {
 	old := os.Args
 	os.Args = []string{"svc"}
 	t.Cleanup(func() { os.Args = old })
+}
+
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	return addr
 }
 
 func rsaPair(t *testing.T) (*rsa.PrivateKey, string, string) {
@@ -224,4 +237,49 @@ func TestAuthMiddleware(t *testing.T) {
 			t.Fatalf("code=%d claims=%+v", rec.Code, got)
 		}
 	})
+}
+
+func TestEnableWithAuthProtectsEveryRouteButHealth(t *testing.T) {
+	setArgs(t)
+	addr := freeAddr(t)
+	t.Setenv("BILLING_HTTP_ADDR", addr)
+	t.Setenv("BILLING_JWT_SECRET_KEY", "config-secret-config-secret-config")
+	a, err := gox.New("billing", gox.WithoutAdminServer(), gox.WithLogger(quiet()), gox.HTTP(), jwt.Enable(jwt.WithAuth()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.HandleFunc("GET /me", func(w http.ResponseWriter, r *http.Request) {
+		c, _ := jwt.ClaimsFromContext(r.Context())
+		_, _ = w.Write([]byte(c.UserID))
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.RunContext(ctx) }()
+	for !a.Health().IsReady() {
+		time.Sleep(5 * time.Millisecond)
+	}
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	resp, _ := http.Get("http://" + addr + "/me")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no token = %d", resp.StatusCode)
+	}
+	resp, _ = http.Get("http://" + addr + "/readyz")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("health probe must bypass auth, got %d", resp.StatusCode)
+	}
+	token, _ := jwt.From(a).GenerateToken("u7", "e", "t")
+	req, _ := http.NewRequest(http.MethodGet, "http://"+addr+"/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != "u7" {
+		t.Fatalf("with token = %d %s", resp.StatusCode, body)
+	}
 }

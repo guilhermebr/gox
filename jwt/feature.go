@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/pkg/middleware"
@@ -9,20 +10,51 @@ import (
 
 type key struct{}
 
+// Option configures Enable.
+type Option func(*options)
+
+type options struct {
+	auth bool
+}
+
+// WithAuth protects every route with Auth, except /healthz and /readyz so
+// platform probes keep working. For finer control leave it off and wrap
+// the handlers that need it with Auth(From(a)).
+func WithAuth() Option {
+	return func(o *options) { o.auth = true }
+}
+
 // Enable registers the JWT config section and builds the Service from it.
 // There is no lifecycle component: a Service is a value.
-func Enable() gox.Option {
+func Enable(opts ...Option) gox.Option {
 	return func(b *gox.Builder) error {
+		o := options{}
+		for _, opt := range opts {
+			opt(&o)
+		}
 		cfg := &Config{}
 		b.ConfigSection("JWT", cfg, "jwt.Enable()")
+		var svc *Service
 		b.Setup(func(*gox.App) error {
-			svc, err := NewFromConfig(*cfg)
+			s, err := NewFromConfig(*cfg)
 			if err != nil {
 				return err
 			}
-			b.Set(key{}, svc)
+			svc = s
+			b.Set(key{}, s)
 			return nil
 		})
+		if o.auth {
+			b.Middleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+						next.ServeHTTP(w, r)
+						return
+					}
+					Auth(svc)(next).ServeHTTP(w, r)
+				})
+			})
+		}
 		return nil
 	}
 }

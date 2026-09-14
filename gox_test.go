@@ -561,3 +561,23 @@ func TestFeatureMiddlewareRunsBeforeAuthAndUserMiddleware(t *testing.T) {
 		t.Fatalf("order = %v", order)
 	}
 }
+
+func TestLoadConfigLoadsAUserStructWithoutBuildingAnApp(t *testing.T) {
+	setArgs(t)
+	t.Setenv("BILLING_ROLE", "worker")
+	type Config struct {
+		gox.BaseConfig
+		Role string `conf:"default:all"`
+	}
+	var cfg Config
+	if err := gox.LoadConfig("billing", &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Role != "worker" || cfg.ServiceName != "billing" || cfg.HTTP.Addr == "" {
+		t.Fatalf("cfg = %+v", cfg)
+	}
+	var plain struct{ Role string }
+	if err := gox.LoadConfig("billing", &plain); err == nil {
+		t.Fatal("a struct without BaseConfig must be rejected")
+	}
+}
