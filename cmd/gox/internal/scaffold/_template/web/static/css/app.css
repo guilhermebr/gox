@@ -1,0 +1,9 @@
+:root { font-family: system-ui, sans-serif; line-height: 1.5; }
+body { margin: 0; max-width: 42rem; padding: 1rem; }
+header { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+header a { font-weight: 600; text-decoration: none; color: inherit; }
+.flash { padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+.flash-success { background: #e6f4ea; color: #1e4620; }
+.flash-error { background: #fdecea; color: #611a15; }
+.field-error { display: block; color: #b3261e; font-size: 0.9rem; }
+.error h1 { font-size: 3rem; margin: 0; }

@@ -1,0 +1,47 @@
+package hello_test
+
+import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/guilhermebr/gox"
+
+	"{{ .Module }}/internal/hello"
+)
+
+// newMux builds the app without the admin server or log output and returns
+// its mux: handler code, gox.JSON and gox.Error work; the middleware chain
+// is not applied.
+func newMux(t *testing.T) http.Handler {
+	t.Helper()
+	a, err := gox.New("test",
+		gox.WithoutAdminServer(),
+		gox.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		gox.HTTP(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hello.Register(a, "hi")
+	return a.Mux()
+}
+
+func TestGreet(t *testing.T) {
+	mux := newMux(t)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/hello/ana", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"greeting":"hi, ana"`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/hello/"+strings.Repeat("x", 41), nil))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"invalid_argument"`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	}
+}

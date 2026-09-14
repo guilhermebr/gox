@@ -1,0 +1,61 @@
+// Package layout is the page shell every page renders in.
+package layout
+
+import (
+	"fmt"
+
+	"github.com/guilhermebr/gox/web"
+)
+
+// Layout wraps a page body; web.Render passes the request's Page.
+func Layout(page *web.Page, body templ.Component) templ.Component {
+	return shell(page, body)
+}
+
+templ shell(page *web.Page, body templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ page.Title }</title>
+			@web.CSRFMeta(page)
+			<link rel="stylesheet" href={ page.Asset("css/app.css") }/>
+			<script src={ page.Asset("js/htmx.min.js") }></script>
+			<script defer src={ page.Asset("js/alpine.min.js") }></script>
+		</head>
+		<body>
+			<header>
+				<a href="/">Home</a>
+			</header>
+			for _, f := range page.Flashes {
+				<div class={ "flash", "flash-" + f.Kind } role="status">{ f.Message }</div>
+			}
+			<main>
+				@body
+			</main>
+			<script>
+				// Send the CSRF token with every htmx request.
+				document.body.addEventListener('htmx:configRequest', function (e) {
+					var m = document.querySelector('meta[name=csrf-token]');
+					if (m) { e.detail.headers['X-CSRF-Token'] = m.content; }
+				});
+			</script>
+		</body>
+	</html>
+}
+
+// ErrorPage renders framework and handler errors for browser requests. It
+// returns a body fragment; gox wraps it in Layout.
+func ErrorPage(page *web.Page, status int, code, message string) templ.Component {
+	page.Title = fmt.Sprintf("%d", status)
+	return errorBody(status, message)
+}
+
+templ errorBody(status int, message string) {
+	<section class="error">
+		<h1>{ fmt.Sprint(status) }</h1>
+		<p>{ message }</p>
+		<p><a href="/">Back home</a></p>
+	</section>
+}

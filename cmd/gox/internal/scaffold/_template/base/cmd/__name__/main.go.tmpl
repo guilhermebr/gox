@@ -1,0 +1,72 @@
+// Command {{ .Name }} is a service built on gox.
+//
+//	make run          # go run ./cmd/{{ .Name }}
+//	make test lint    # what CI runs
+//	go run ./cmd/{{ .Name }} --help   # every {{ .Prefix }}_* variable
+package main
+
+import (
+	"os"
+
+	"github.com/guilhermebr/gox"
+{{- if .Postgres }}
+	"github.com/guilhermebr/gox/postgres"
+{{- end }}
+{{- if .Web }}
+	"github.com/guilhermebr/gox/web"
+{{- end }}
+
+	"{{ .Module }}/internal/hello"
+{{- if .Web }}
+	"{{ .Module }}/internal/home"
+{{- end }}
+{{- if .Postgres }}
+	"{{ .Module }}/migrations"
+{{- end }}
+{{- if .Web }}
+	"{{ .Module }}/static"
+	"{{ .Module }}/web/layout"
+{{- end }}
+)
+
+// Config holds this service's own settings next to the framework's
+// (gox.BaseConfig). Every field is a {{ .Prefix }}_* variable; see .env.example.
+type Config struct {
+	gox.BaseConfig
+	Greeting string `conf:"default:hello,help:word used by GET /hello/{name}"`
+}
+
+func main() {
+	var cfg Config
+	a := gox.MustNew("{{ .Name }}",
+		gox.WithConfig(&cfg),
+		gox.WithVersion(version),
+		gox.HTTP(),
+{{- if .Postgres }}
+		postgres.Enable(postgres.WithMigrations(migrations.FS)),
+{{- end }}
+{{- if .Web }}
+		web.Enable(
+			web.WithStatic(static.FS),
+			web.WithSessions(),
+			web.WithLayout(layout.Layout),
+			web.WithErrorPage(layout.ErrorPage),
+		),
+{{- end }}
+	)
+
+	hello.Register(a, cfg.Greeting)
+{{- if .Web }}
+	home.Register(a)
+{{- else }}
+	a.HandleFunc("GET /{$}", hello.Index)
+{{- end }}
+
+	if err := a.Run(); err != nil {
+		os.Exit(1) // Run already logged the failure
+	}
+}
+
+// version is set by the Makefile and the Dockerfile with
+// -ldflags "-X main.version=<git describe>".
+var version = "dev"

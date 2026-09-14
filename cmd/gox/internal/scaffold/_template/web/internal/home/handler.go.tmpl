@@ -1,0 +1,21 @@
+// Package home serves the landing page.
+package home
+
+import (
+	"net/http"
+
+	"github.com/guilhermebr/gox"
+	"github.com/guilhermebr/gox/web"
+
+	"{{ .Module }}/internal/home/views"
+)
+
+// Register mounts the home page.
+func Register(a *gox.App) {
+	a.HandleFunc("GET /{$}", index)
+}
+
+func index(w http.ResponseWriter, r *http.Request) {
+	web.PageFrom(r).Title = "{{ .Name }}"
+	_ = web.Render(w, r, views.Home("It works."))
+}

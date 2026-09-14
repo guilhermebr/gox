@@ -1,0 +1,30 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - misspell
+    - revive
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: error-strings
+        - name: unused-parameter
+  exclusions:
+    generated: lax
+    paths:
+      - ".*_templ\\.go$"
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports

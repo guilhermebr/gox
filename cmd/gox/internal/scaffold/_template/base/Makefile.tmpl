@@ -1,0 +1,49 @@
+NAME    := {{ .Name }}
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X main.version=$(VERSION)
+{{- if .Web }}
+TEMPL_VERSION  := {{ .TemplVersion }}
+HTMX_VERSION   := {{ .HTMXVersion }}
+ALPINE_VERSION := {{ .AlpineVersion }}
+{{- end }}
+
+.PHONY: build run test lint fmt docker help{{ if .Web }} generate assets{{ end }}
+
+## build: compile to bin/$(NAME)
+build:
+	go build -ldflags "$(LDFLAGS)" -o bin/$(NAME) ./cmd/$(NAME)
+
+## run: run locally (variables from the environment; see .env.example)
+run:
+	go run -ldflags "$(LDFLAGS)" ./cmd/$(NAME)
+
+## test: race tests
+test:
+	go test -race ./...
+
+## lint: golangci-lint with .golangci.yml
+lint:
+	golangci-lint run ./...
+
+## fmt: gofumpt + goimports via golangci-lint
+fmt:
+	golangci-lint fmt ./...
+{{- if .Web }}
+
+## generate: regenerate templ code (CLI pinned to gox/web's templ version)
+generate:
+	go run github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION) generate
+
+## assets: vendor pinned htmx and Alpine.js into static/js (committed, no CDN at runtime)
+assets:
+	curl -sSfL -o static/js/htmx.min.js https://unpkg.com/htmx.org@$(HTMX_VERSION)/dist/htmx.min.js
+	curl -sSfL -o static/js/alpine.min.js https://cdn.jsdelivr.net/npm/alpinejs@$(ALPINE_VERSION)/dist/cdn.min.js
+{{- end }}
+
+## docker: build the image
+docker:
+	docker build --build-arg VERSION=$(VERSION) -t $(NAME):$(VERSION) .
+
+## help: list targets
+help:
+	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## //'

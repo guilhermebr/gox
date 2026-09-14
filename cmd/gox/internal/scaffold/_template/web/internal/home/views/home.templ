@@ -1,0 +1,10 @@
+// Package views holds the home feature's templ components. Pages take
+// explicit typed parameters.
+package views
+
+// Home is the landing page.
+templ Home(greeting string) {
+	<h1>{ greeting }</h1>
+	<p>This page is <code>internal/home/views/home.templ</code>, rendered by <code>internal/home/handler.go</code> inside <code>web/layout/layout.templ</code>.</p>
+	<p>Try the JSON API: <a href="/hello/world">/hello/world</a>.</p>
+}

@@ -1,8 +1,10 @@
 // Command gox is the framework's CLI.
 //
-//	gox docs [-o llm.txt] [-check]   regenerate llm.txt from source (or verify it is current)
+//	gox new <name> [-module PATH] [-dir DIR] [-postgres] [-web] [-gox-dir DIR]
+//	gox docs [-root DIR] [-o FILE] [-check]
 //
-// `gox new` (the scaffolder) arrives in Phase 5.
+// new renders a service that builds, tests, runs and answers /healthz with
+// zero edits. docs regenerates llm.txt from source (or verifies it).
 package main
 
 import (
@@ -10,9 +12,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/guilhermebr/gox/cmd/gox/internal/llmdoc"
+	"github.com/guilhermebr/gox/cmd/gox/internal/scaffold"
 )
 
 func main() {
@@ -21,6 +26,8 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "new":
+		os.Exit(newService(os.Args[2:]))
 	case "docs":
 		os.Exit(docs(os.Args[2:]))
 	default:
@@ -30,7 +37,72 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gox docs [-root DIR] [-o FILE] [-check]")
+	fmt.Fprintln(os.Stderr, "usage:")
+	fmt.Fprintln(os.Stderr, "  gox new <name> [-module PATH] [-dir DIR] [-postgres] [-web] [-gox-dir DIR]")
+	fmt.Fprintln(os.Stderr, "  gox docs [-root DIR] [-o FILE] [-check]")
+}
+
+func newService(args []string) int {
+	fs := flag.NewFlagSet("new", flag.ContinueOnError)
+	module := fs.String("module", "", "Go module path (default: github.com/<user>/<name> is NOT guessed; default is the name)")
+	dir := fs.String("dir", "", "target directory (default ./<name>)")
+	postgres := fs.Bool("postgres", false, "add gox/postgres with a migrations package")
+	web := fs.Bool("web", false, "add gox/web with a layout, a home page and static assets")
+	goxDir := fs.String("gox-dir", "", "use a local gox checkout via replace directives (development)")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: gox new <name> [flags]")
+		fs.PrintDefaults()
+	}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		fs.Usage()
+		return 2
+	}
+	name := args[0]
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if *module == "" {
+		*module = name
+	}
+	if *dir == "" {
+		*dir = name
+	}
+	if *goxDir != "" {
+		abs, err := filepath.Abs(*goxDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		*goxDir = abs
+	}
+	files, err := scaffold.Render(scaffold.Options{Name: name, Module: *module, Postgres: *postgres, Web: *web, GoxDir: *goxDir})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := scaffold.Write(*dir, files); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("created %s (%d files)\n", *dir, len(files))
+
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = *dir
+	tidy.Stdout, tidy.Stderr = os.Stdout, os.Stderr
+	if err := tidy.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "go mod tidy failed (%v); run it yourself once the gox modules are reachable\n", err)
+	}
+
+	prefix := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+	fmt.Printf("\nnext:\n  cd %s\n  make run                # :8080 public, :9090 admin\n  make test lint\n", *dir)
+	if *postgres {
+		fmt.Printf("  export %s_POSTGRES_URL=postgres://user:pass@localhost:5432/%s?sslmode=disable\n", prefix, name)
+	}
+	if *web {
+		fmt.Printf("  make assets             # vendor htmx and Alpine.js into static/js\n")
+	}
+	fmt.Printf("  read AGENTS.md before handing it to an agent\n")
+	return 0
 }
 
 // spec lists what llm.txt documents, in order. Adding a feature package
@@ -88,7 +160,7 @@ func withBaseConfigDir(s llmdoc.Spec, configDir string) llmdoc.Spec {
 	rootPkg := s.Packages[0]
 	rootAPI := rootPkg
 	rootAPI.Config = ""
-	rootCfg := llmdoc.Package{Title: "gox (root)", ImportPath: rootPkg.ImportPath, Dir: configDir, Config: "Base", APIOnly: false, ConfigOnly: true}
+	rootCfg := llmdoc.Package{Title: "gox (root)", ImportPath: rootPkg.ImportPath, Dir: configDir, Config: "Base", ConfigOnly: true}
 	pkgs := append([]llmdoc.Package{rootAPI, rootCfg}, s.Packages[1:]...)
 	s.Packages = pkgs
 	return s

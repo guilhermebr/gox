@@ -1,0 +1,23 @@
+# {{ .Name }}
+
+A service built on [gox](https://github.com/guilhermebr/gox).
+
+```
+make run              # start on :8080 (admin on :9090)
+make test lint        # what CI runs
+go run ./cmd/{{ .Name }} --help   # every {{ .Prefix }}_* variable
+```
+
+- `cmd/{{ .Name }}/main.go`: what the service is made of.
+- `internal/<feature>/`: one package per feature, each with `Register(a *gox.App)`.
+{{- if .Postgres }}
+- `migrations/`: SQL files run at boot by `postgres.WithMigrations`.
+{{- end }}
+{{- if .Web }}
+- `web/layout/`: the page shell; `internal/<feature>/views/`: templ pages; `static/`: embedded assets (`make assets` vendors htmx and Alpine.js).
+{{- end }}
+- `.env.example`: every variable the service reads.
+
+Health: `GET :9090/healthz` (liveness), `GET :9090/readyz` (readiness, also on :8080), `GET :9090/metrics`, `GET :9090/version`.
+
+For agents: read `AGENTS.md`.

@@ -1,0 +1,17 @@
+module {{ .Module }}
+
+go {{ .GoVersion }}
+{{- if .GoxDir }}
+
+// Development: the gox modules come from a local checkout. Remove these
+// lines to use released versions.
+replace github.com/guilhermebr/gox => {{ .GoxDir }}
+{{- if .Postgres }}
+
+replace github.com/guilhermebr/gox/postgres => {{ .GoxDir }}/postgres
+{{- end }}
+{{- if .Web }}
+
+replace github.com/guilhermebr/gox/web => {{ .GoxDir }}/web
+{{- end }}
+{{- end }}
