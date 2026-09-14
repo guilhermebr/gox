@@ -1,7 +1,9 @@
 # AGENTS.md — working inside the gox repository
 
 This file is for AI agents (and humans) editing gox itself. For agents
-building a *service on* gox, see `template/AGENTS.md` and `llm.txt`.
+building a *service on* gox, see the `AGENTS.md` that `gox new` puts in
+every generated service (source: `cmd/gox/internal/scaffold/_template/base/AGENTS.md`)
+and `llm.txt`.
 
 ## What gox is
 
@@ -18,7 +20,7 @@ gox.go builder.go app.go run.go http.go errors.go helpers.go   root package
 pkg/lifecycle config log errors health admin middleware httpx httpserver httpclient otel
 postgres/ jwt/ supabase/ web/     feature packages, one module each
 examples/                          runnable examples, one module
-cmd/gox/                           CLI: `gox docs` (llm.txt generator)
+cmd/gox/                           CLI: `gox new` (scaffolder; template under internal/scaffold/_template) and `gox docs` (llm.txt generator)
 docs/llm/                          fragments assembled into llm.txt
 docs/decisions/                    ADRs
 docs/recipes/                      copy-pasteable tasks (build-checked)
@@ -41,6 +43,15 @@ make fmt             # gofumpt + goimports
 make generate        # templ generate for examples/web (CLI pinned to web/go.mod)
 make llm             # regenerate llm.txt after any public API or config change
 ```
+
+The scaffold template lives in `cmd/gox/internal/scaffold/_template/{base,postgres,web}`
+(a leading underscore keeps Go tooling out of it; `all:_template` embeds it).
+`.tmpl` files are Go text templates over `scaffold.data`; `__name__` in a
+path becomes the service name. templ files there ship with their generated
+`_templ.go` (regenerate with `templ generate -path cmd/gox/internal/scaffold/_template/web`
+after changing them). `TestGeneratedServiceBuildsTestsAndAnswersHealthz`
+renders `--web` and `--postgres --web` against the working tree and runs
+them; keep it green.
 
 `make ci` must be green before a phase or a PR is considered done.
 

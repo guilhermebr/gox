@@ -152,14 +152,30 @@ Every feature has the same shape: `Config`, `Enable(opts...) gox.Option`,
 `ConfigSection`, `Component`, `Setup`, `Finish`, `Middleware`,
 `ErrorRenderer` and `Set`. `docs/features.md` walks through one.
 
+## Start a service
+
+```
+go install github.com/guilhermebr/gox/cmd/gox@latest
+gox new billing --module github.com/acme/billing --postgres --web
+cd billing && make run
+```
+
+`gox new` renders `cmd/<name>/main.go`, an example feature with a test,
+`.env.example`, a Makefile, a distroless Dockerfile, a lint config, a CI
+workflow, `AGENTS.md` and `CLAUDE.md`. `--postgres` adds a `migrations`
+package and `postgres.Enable`; `--web` adds a templ layout, a home page and
+embedded static assets. The result builds, tests, runs and answers
+`/healthz` with zero edits; a test in this repository proves it on every
+commit.
+
 ## Documentation
 
 - `llm.txt`: the complete reference for models, generated from source.
 - `docs/guide.md`: build a service end to end.
 - `docs/features.md`: write your own `Enable()`/`From()` package.
 - `docs/recipes/`: one complete, build-checked example per task.
-- `AGENTS.md`: for agents working in this repository; `template/AGENTS.md`
-  for agents working in a service built on gox.
+- `AGENTS.md`: for agents working in this repository. Generated services
+  get their own `AGENTS.md` and `CLAUDE.md` from the scaffold template.
 - `examples/`: `minimal`, `http`, `postgres`, `web`.
 
 ## Versioning
