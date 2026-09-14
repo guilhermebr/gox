@@ -1,285 +1,183 @@
-# Gox
+# gox
 
 [![CI](https://github.com/guilhermebr/gox/actions/workflows/ci.yml/badge.svg)](https://github.com/guilhermebr/gox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/guilhermebr/gox.svg)](https://pkg.go.dev/github.com/guilhermebr/gox)
 
-Gox is a collection of Go modules that provide common functionality and utilities for Go applications. It aims to simplify common tasks and provide consistent patterns across different projects.
+gox is an opinionated Go service framework. Adopt it and stop deciding which
+logger, router, config loader, database driver, or observability stack to
+use: every service on gox looks the same, starts the same, shuts down the
+same, and shows up the same on dashboards.
 
-## Modules
+It is built for services written *with* AI coding assistants. A small,
+symmetrical API, one project layout, self-explaining errors, and a single
+machine-readable reference (`llm.txt`) mean a model generates a correct
+service on the first try and spends its tokens on your domain, not on
+plumbing.
 
-### Logger
+**Go 1.26 or newer.**
 
-The `logger` module provides a flexible logging system built on top of Go's `slog` package. It supports both JSON and text-based logging formats, with configurable log levels and output destinations.
+## Two constraints that shape everything
 
-#### Features
+1. **The common path is one import.** A plain HTTP service imports only
+   `github.com/guilhermebr/gox`. Lifecycle, config, logging, tracing, metrics,
+   health, the admin server and the HTTP server live in the root.
+2. **Heavy integrations are opt-in by import.** Postgres, JWT, Supabase and
+   server-rendered HTML are subpackages with an `Enable()` option and a
+   `From(app)` accessor. A service that does not import `gox/postgres` never
+   compiles pgx. CI proves it on every build.
 
-- Configurable log levels (DEBUG, INFO, WARN, ERROR)
-- Support for both JSON and text-based logging formats
-- Environment-aware defaults (development vs production)
-- Configurable output destination (stdout/stderr)
-
-#### Usage
-
-```go
-import "github.com/guilhermebr/gox/logger"
-
-// Create a new logger with configuration prefix
-logger, err := logger.NewLogger("APP")
-if err != nil {
-    // Handle error
-}
-
-// Use the logger
-logger.Info("Application started", "version", "1.0.0")
-```
-
-### HTTP
-
-The `http` module provides a thin wrapper around Go's `net/http` server with sensible configuration via environment variables, graceful shutdown, and a `ServerManager` to run multiple servers.
-
-#### Features
-
-- Graceful shutdown on SIGINT/SIGTERM with configurable timeout
-- Environment-driven configuration (address, timeouts)
-- Run one or many servers with `ServerManager`
-- Structured logging via `slog`
-
-#### Usage
+## A JSON API, one import
 
 ```go
+package main
+
 import (
-    goxhttp "github.com/guilhermebr/gox/http"
-    "github.com/guilhermebr/gox/logger"
-    "net/http"
+	"net/http"
+	"os"
+
+	"github.com/guilhermebr/gox"
 )
 
 func main() {
-    log, _ := logger.NewLogger("APP")
-
-    mux := http.NewServeMux()
-    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-        w.WriteHeader(http.StatusOK)
-        _, _ = w.Write([]byte("ok"))
-    })
-
-    srv, err := goxhttp.NewServer("HTTP", mux, log)
-    if err != nil {
-        panic(err)
-    }
-
-    if err := srv.StartWithGracefulShutdown(); err != nil {
-        log.Error("server exited", "error", err)
-    }
+	a := gox.MustNew("hello", gox.HTTP())
+	a.HandleFunc("GET /hello/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = gox.JSON(w, http.StatusOK, map[string]string{"hello": r.PathValue("name")})
+	})
+	if err := a.Run(); err != nil {
+		os.Exit(1)
+	}
 }
 ```
 
-### Postgres
+Run it and you have structured JSON logs with request ids, traces, Prometheus
+metrics on `:9090/metrics`, `/healthz` and `/readyz` on both ports, pprof, a
+per-request timeout and body limit, one error envelope for everything, and a
+graceful drain on SIGTERM. You wrote none of that.
 
-The `postgres` module provides a simple way to create and manage PostgreSQL database connections using connection pools.
-
-#### Features
-
-- Connection pool management using `pgx`
-- Configuration through environment variables
-- Context-aware connection handling
-
-#### Usage
+## A service with Postgres, two imports
 
 ```go
-import "github.com/guilhermebr/gox/postgres"
+package main
 
-// Create an optimized pool with monitoring (preferred).
-// postgres.New is still available but deprecated.
-pool, err := postgres.NewOptimized(ctx, "DB", logger)
-if err != nil {
-    // Handle error
-}
-defer pool.Close()
+import (
+	"embed"
+	"errors"
+	"net/http"
+	"os"
+	"time"
 
-// Use the pool
-// pool.QueryRow(ctx, "SELECT * FROM users WHERE id = $1", userID)
-```
+	"github.com/jackc/pgx/v5"
 
-### Supabase
+	"github.com/guilhermebr/gox"
+	"github.com/guilhermebr/gox/postgres"
+)
 
-The `supabase` module provides a simple way to create and configure Supabase clients for interacting with Supabase services.
+//go:embed migrations/*.sql
+var migrations embed.FS
 
-#### Features
-
-- Easy Supabase client creation
-- Configuration through environment variables
-- Built on top of the official Supabase Go client
-
-#### Usage
-
-```go
-import "github.com/guilhermebr/gox/supabase"
-
-// Create a new Supabase client with configuration prefix
-client, err := supabase.New("APP")
-if err != nil {
-    // Handle error
+type Config struct {
+	gox.BaseConfig
+	InvoiceTTL time.Duration `conf:"default:24h"`
 }
 
-// Use the client for database operations, authentication, etc.
-// client.From("users").Select("*")
-```
+func main() {
+	var cfg Config
+	a := gox.MustNew("billing",
+		gox.WithConfig(&cfg),
+		gox.HTTP(),
+		postgres.Enable(postgres.WithMigrations(migrations)),
+	)
+	db := postgres.From(a)
 
-### Monetary
+	a.HandleFunc("GET /invoices/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var id string
+		err := db.QueryRow(r.Context(), "SELECT id FROM invoices WHERE id = $1", r.PathValue("id")).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			gox.Error(w, r, gox.NotFound("invoice %s", r.PathValue("id")))
+			return
+		}
+		if err != nil {
+			gox.Error(w, r, err)
+			return
+		}
+		_ = gox.JSON(w, http.StatusOK, map[string]string{"id": id})
+	})
 
-The `monetary` module provides types and functions for handling monetary values with precise arithmetic using `big.Int`. It supports both fiat currencies and cryptocurrencies, storing amounts as integers in the smallest unit to maintain precision.
-
-#### Features
-
-- Precise arithmetic using `big.Int` for amounts (no floating-point errors)
-- Support for fiat currencies (USD, BRL, GBP, CHF, JPY, etc.)
-- Support for cryptocurrencies (BTC, ETH, USDT, USDC, etc.)
-- Mathematical operations (Add, Subtract, Multiply, Divide)
-- Comparison operations (Equal, GreaterThan, LessThan)
-- JSON marshaling/unmarshaling support
-- Decimal string parsing and formatting
-- Predefined assets with appropriate precision
-
-#### Usage
-
-```go
-import "github.com/guilhermebr/gox/monetary"
-
-// Create monetary values from decimal strings
-usd100, _ := monetary.NewMonetaryFromString(monetary.USD, "100.50")
-usd50, _ := monetary.NewMonetaryFromString(monetary.USD, "50.25")
-
-// Create from big.Int (amounts in smallest unit - cents for USD)
-amount := big.NewInt(10050) // $100.50 in cents
-usd, _ := monetary.NewMonetary(monetary.USD, amount)
-
-// Perform arithmetic operations
-sum, _ := usd100.Add(usd50)           // $150.75
-diff, _ := usd100.Subtract(usd50)     // $50.25
-doubled, _ := usd100.Multiply(big.NewInt(2)) // $201.00
-
-// Comparisons
-isEqual := usd100.Equal(usd50)        // false
-isGreater, _ := usd100.GreaterThan(usd50) // true
-
-// Work with cryptocurrencies
-btc, _ := monetary.NewMonetaryFromString(monetary.BTC, "0.00123456")
-fmt.Println(btc.String()) // [BTC (BTC) 0.00123456]
-
-// Find assets by symbol or name
-asset, found := monetary.FindAssetBySymbol("BTC")
-if found {
-    fmt.Println(asset.String()) // BTC (BTC)
+	if err := a.Run(); err != nil {
+		os.Exit(1)
+	}
 }
 ```
 
-### JWT
+With `BILLING_POSTGRES_URL` set: the pool pings at boot (a lazy pool never
+reports healthy), the migration runs on a dedicated connection before
+`/readyz` turns green, queries are traced, pool stats are exported, and the
+pool closes last on shutdown.
 
-The `jwt` module issues and validates HS256 JSON Web Tokens with a small, typed
-claim set (user ID, email, account type) on top of the standard registered claims.
+A server-rendered HTML app on templ is the same shape with `gox/web`; see
+`examples/web`.
 
-#### Features
+## The opinions
 
-- HS256 token generation, validation, and refresh
-- Typed `Claims` (user ID, email, account type)
-- Sentinel errors (`ErrInvalidToken`, `ErrInvalidClaims`) for `errors.Is`
-- Environment-driven configuration (`JWT_SECRET_KEY` is **required** — no default)
+gox chooses once so you do not. Each choice has an ADR in `docs/decisions/`.
 
-#### Usage
+| gox chooses | because |
+|---|---|
+| `net/http` and the Go 1.22 `ServeMux` | models and people already know it; method and wildcard routing cover what routers were used for (ADR 0005) |
+| `log/slog`, JSON in production, text in development | stdlib, structured, with request and trace ids stamped from the context |
+| `ardanlabs/conf`, one env prefix per service, `--help` lists everything | one config pass, one source of truth, discoverable from the binary (ADR 0003) |
+| OpenTelemetry traces and metrics, Prometheus on the admin port | every service on the same dashboards with the same metric names |
+| coded errors with a public-safe message and one JSON envelope | clients see one shape from handlers and the framework alike; causes go to logs, never to clients (ADR 0004) |
+| an explicit staged lifecycle, no DI container | start order is fixed by stage, readable, and shutdown is the exact reverse (ADR 0002) |
+| pgx plus golang-migrate on a dedicated connection | what every consumer already used, minus the incident that starved a pool under a rolling deploy (ADR 0006) |
+| templ, Alpine.js, HTMX 2, Tailwind standalone CLI, embedded hashed assets | what the existing HTML apps converged on; no Node at build or run time (ADR 0007) |
+| nested modules, one per feature | a consumer's module graph contains only what it imports (ADR 0000) |
 
-```go
-import "github.com/guilhermebr/gox/jwt"
+## Escape hatches
 
-// JWT_SECRET_KEY must be set in the environment.
-cfg, err := jwt.LoadConfig("APP")
-if err != nil {
-    // Handle error
-}
-svc := jwt.NewServiceFromConfig(cfg)
+- `gox.Component(c)` and `a.Add(c)` accept anything with `Name`, `Start` and
+  `Stop`; implement `Run` for a blocking loop, `Ready` for readiness.
+- `gox.WithMiddleware` appends to the chain; `gox.WithAuth` fills the auth
+  slot; `gox.WithErrorMapper` translates your own sentinels.
+- `a.Mux()` is the plain `*http.ServeMux`.
+- `pkg/*` is importable: `pkg/lifecycle`, `pkg/config`, `pkg/log`,
+  `pkg/errors`, `pkg/health`, `pkg/middleware`, `pkg/httpx`,
+  `pkg/httpserver`, `pkg/httpclient`, `pkg/otel`. Services rarely need them.
 
-token, err := svc.GenerateToken("user-id", "user@example.com", "admin")
-claims, err := svc.ValidateToken(token)
-```
+## Writing a feature package
 
-### OSRelease
+Every feature has the same shape: `Config`, `Enable(opts...) gox.Option`,
+`From(a) T`, `With*` options. Inside `Enable`, the `gox.Builder` gives you
+`ConfigSection`, `Component`, `Setup`, `Finish`, `Middleware`,
+`ErrorRenderer` and `Set`. `docs/features.md` walks through one.
 
-The `osrelease` module parses `/etc/os-release` (with a fallback to
-`/usr/lib/os-release`) and helps detect the Linux distribution and its family.
+## Documentation
 
-#### Features
+- `llm.txt`: the complete reference for models, generated from source.
+- `docs/guide.md`: build a service end to end.
+- `docs/features.md`: write your own `Enable()`/`From()` package.
+- `docs/recipes/`: one complete, build-checked example per task.
+- `AGENTS.md`: for agents working in this repository; `template/AGENTS.md`
+  for agents working in a service built on gox.
+- `examples/`: `minimal`, `http`, `postgres`, `web`.
 
-- Parses standard `os-release` fields into a typed struct
-- Falls back from `/etc/os-release` to `/usr/lib/os-release`
-- Distribution family / package-manager detection helpers
-- No external dependencies
+## Versioning
 
-#### Usage
+Semantic versioning per module: `v0.x.y` for the root, `postgres/v0.x.y`
+for a feature. Public API is deprecated for one minor version before it is
+removed. The `http` and `logger` modules are deprecated in favor of the root
+package and stay unchanged until then.
 
-```go
-import "github.com/guilhermebr/gox/osrelease"
+## Utilities
 
-info, err := osrelease.Read()
-if err != nil {
-    // Handle error
-}
-fmt.Println(info.ID, info.VersionID) // e.g. "ubuntu 22.04"
-```
-
-## Configuration
-
-The Logger, HTTP, Postgres, Supabase, and JWT modules use the `ardanlabs/conf` package for configuration management. Configuration can be provided through environment variables with the specified prefix. The Monetary module does not require external configuration.
-
-### Logger Configuration
-
-- `APP_LOGGING_LEVEL`: Log level (DEBUG, INFO, WARN, ERROR)
-- `APP_LOGGING_TYPE`: Log format (JSON, TEXT)
-- `APP_LOGGING_STDERR`: Output to stderr instead of stdout (true/false)
-- `APP_ENVIRONMENT`: Environment (development/production)
-
-### Postgres Configuration
-
-- `DB_DATABASE_HOST`: Database host
-- `DB_DATABASE_PORT`: Database port
-- `DB_DATABASE_USER`: Database user
-- `DB_DATABASE_PASSWORD`: Database password
-- `DB_DATABASE_NAME`: Database name
-- `DB_DATABASE_SSLMODE`: SSL mode (disable/require)
-- `DB_DATABASE_POOL_MIN_SIZE`: Minimum pool size
-- `DB_DATABASE_POOL_MAX_SIZE`: Maximum pool size
-
-### Supabase Configuration
-
-- `APP_SUPABASE_URL`: Supabase project URL
-- `APP_SUPABASE_KEY`: Supabase API key (anon or service role key)
-
-### JWT Configuration
-
-- `APP_JWT_SECRET_KEY`: Signing secret (**required**, no default)
-- `APP_JWT_ISSUER`: Token issuer (default: `go-app`)
-- `APP_JWT_EXPIRY`: Token lifetime as a Go duration (default: `24h`)
-
-## Installation
-
-`gox` is a multi-module repository — each module is versioned and imported
-independently. Every module requires **Go 1.26 or newer**. Install only what
-you need:
-
-```bash
-go get github.com/guilhermebr/gox/logger
-go get github.com/guilhermebr/gox/http
-go get github.com/guilhermebr/gox/postgres
-go get github.com/guilhermebr/gox/supabase
-go get github.com/guilhermebr/gox/monetary
-go get github.com/guilhermebr/gox/jwt
-go get github.com/guilhermebr/gox/osrelease
-```
+`monetary` (exact money arithmetic) and `osrelease` (Linux distribution
+detection) are plain libraries with no framework dependency.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+See `CONTRIBUTING.md` and `AGENTS.md`. `make ci` is the bar.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
+MIT. See `LICENSE`.
