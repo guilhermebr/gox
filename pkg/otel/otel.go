@@ -137,66 +137,48 @@ func Setup(ctx context.Context, cfg Config) (*Providers, error) {
 	return p, nil
 }
 
-func newTraceExporter(ctx context.Context, cfg Config, proto string) (*otlptrace.Exporter, error) {
-	switch proto {
-	case "http":
-		opts := []otlptracehttp.Option{}
-		if cfg.Endpoint != "" {
-			opts = append(opts, otlptracehttp.WithEndpoint(cfg.Endpoint))
-		}
-		if cfg.Insecure {
-			opts = append(opts, otlptracehttp.WithInsecure())
-		}
-		exp, err := otlptracehttp.New(ctx, opts...)
-		if err != nil {
-			return nil, fmt.Errorf("otel: trace exporter: %w", err)
-		}
-		return exp, nil
-	default:
-		opts := []otlptracegrpc.Option{}
-		if cfg.Endpoint != "" {
-			opts = append(opts, otlptracegrpc.WithEndpoint(cfg.Endpoint))
-		}
-		if cfg.Insecure {
-			opts = append(opts, otlptracegrpc.WithInsecure())
-		}
-		exp, err := otlptracegrpc.New(ctx, opts...)
-		if err != nil {
-			return nil, fmt.Errorf("otel: trace exporter: %w", err)
-		}
-		return exp, nil
+// otlpOptions builds the exporter options shared by every OTLP protocol.
+func otlpOptions[O any](cfg Config, withEndpoint func(string) O, withInsecure O) []O {
+	var opts []O
+	if cfg.Endpoint != "" {
+		opts = append(opts, withEndpoint(cfg.Endpoint))
 	}
+	if cfg.Insecure {
+		opts = append(opts, withInsecure)
+	}
+	return opts
+}
+
+func newTraceExporter(ctx context.Context, cfg Config, proto string) (*otlptrace.Exporter, error) {
+	var (
+		exp *otlptrace.Exporter
+		err error
+	)
+	if proto == "http" {
+		exp, err = otlptracehttp.New(ctx, otlpOptions(cfg, otlptracehttp.WithEndpoint, otlptracehttp.WithInsecure())...)
+	} else {
+		exp, err = otlptracegrpc.New(ctx, otlpOptions(cfg, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure())...)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("otel: trace exporter: %w", err)
+	}
+	return exp, nil
 }
 
 func newMetricExporter(ctx context.Context, cfg Config, proto string) (sdkmetric.Exporter, error) {
-	switch proto {
-	case "http":
-		opts := []otlpmetrichttp.Option{}
-		if cfg.Endpoint != "" {
-			opts = append(opts, otlpmetrichttp.WithEndpoint(cfg.Endpoint))
-		}
-		if cfg.Insecure {
-			opts = append(opts, otlpmetrichttp.WithInsecure())
-		}
-		exp, err := otlpmetrichttp.New(ctx, opts...)
-		if err != nil {
-			return nil, fmt.Errorf("otel: metric exporter: %w", err)
-		}
-		return exp, nil
-	default:
-		opts := []otlpmetricgrpc.Option{}
-		if cfg.Endpoint != "" {
-			opts = append(opts, otlpmetricgrpc.WithEndpoint(cfg.Endpoint))
-		}
-		if cfg.Insecure {
-			opts = append(opts, otlpmetricgrpc.WithInsecure())
-		}
-		exp, err := otlpmetricgrpc.New(ctx, opts...)
-		if err != nil {
-			return nil, fmt.Errorf("otel: metric exporter: %w", err)
-		}
-		return exp, nil
+	var (
+		exp sdkmetric.Exporter
+		err error
+	)
+	if proto == "http" {
+		exp, err = otlpmetrichttp.New(ctx, otlpOptions(cfg, otlpmetrichttp.WithEndpoint, otlpmetrichttp.WithInsecure())...)
+	} else {
+		exp, err = otlpmetricgrpc.New(ctx, otlpOptions(cfg, otlpmetricgrpc.WithEndpoint, otlpmetricgrpc.WithInsecure())...)
 	}
+	if err != nil {
+		return nil, fmt.Errorf("otel: metric exporter: %w", err)
+	}
+	return exp, nil
 }
 
 // Exporting reports whether traces and metrics are exported over OTLP.
