@@ -301,8 +301,10 @@ type Code = errors.Code  // Code classifies a coded error.
 func CodeOf(err error) Code  // CodeOf returns the code of err through wrapping: OK for nil, Unknown for foreign errors.
 type Envelope = errors.Envelope  // Envelope is the JSON error body every gox response uses.
 type ErrorMapper = errors.Mapper  // ErrorMapper translates a service's own errors into coded errors at the boundary.
+type ErrorRenderer = httpx.ErrorRenderer  // ErrorRenderer writes an error response in place of the JSON envelope; it returns false to decline a request.
 type HTTPOption func(*httpOptions)  // HTTPOption configures the public HTTP server declared with HTTP().
 func WithCORS(cfg CORSConfig) HTTPOption  // WithCORS enables CORS for the given configuration.
+func WithSPA(cfg SPAConfig) HTTPOption  // WithSPA serves a single-page application from the same origin as the API: files from cfg.FS at their paths, index.html for every other GET so client-side routes deep-link, and the error envelope for unmatched requests under cfg.ServerPrefixes.
 type Middleware = middleware.Middleware  // Middleware wraps an http.Handler.
 type Option func(*Builder) error  // Option declares one thing the app is made of or one behaviour of it.
 func Component(c lifecycle.Component) Option  // Component adds any user component at StageUser.
@@ -313,11 +315,13 @@ func WithAuth(mw Middleware) Option  // WithAuth fills the auth slot of the chai
 func WithConfig(dst any) Option  // WithConfig registers the service's own config struct, which must embed BaseConfig.
 func WithConfigPrefix(p string) Option  // WithConfigPrefix sets the environment prefix.
 func WithErrorMapper(m ErrorMapper) Option  // WithErrorMapper registers a mapper applied by gox.Error before rendering, so a service keeps its domain sentinels and maps them once.
+func WithErrorRenderer(fn ErrorRenderer) Option  // WithErrorRenderer replaces the JSON envelope for every error response, from handlers (gox.Error) and from the framework (404, 405, panics, timeouts, body limits) alike.
 func WithLogger(l *slog.Logger) Option  // WithLogger replaces the logger gox would build from config.
 func WithMiddleware(mw ...Middleware) Option  // WithMiddleware appends middleware after the default chain (and after the auth slot), outermost first.
 func WithShutdownTimeout(d time.Duration) Option  // WithShutdownTimeout sets the default per-component stop budget.
 func WithVersion(v string) Option  // WithVersion sets the build version reported in logs and on /version.
 func WithoutAdminServer() Option  // WithoutAdminServer disables the ops server.
+type SPAConfig = httpserver.SPAConfig  // SPAConfig describes a single-page application served next to the API.
 type Stage int  // Stage orders component start-up.
 const StageDatastore, StageClient, StageUser, StageServer Stage  // Stages.
 func Aborted(format string, args ...any) *errors.Error  // Aborted creates a 409 error: a concurrency conflict; the client may retry.
@@ -338,6 +342,7 @@ func NewError(code Code, msg string) *errors.Error  // NewError creates a coded 
 func NotFound(format string, args ...any) *errors.Error  // NotFound creates a 404 error.
 func OutOfRange(format string, args ...any) *errors.Error  // OutOfRange creates a 400 error.
 func PermissionDenied(format string, args ...any) *errors.Error  // PermissionDenied creates a 403 error.
+func ProblemJSON(w http.ResponseWriter, r *http.Request, status int, env Envelope) bool  // ProblemJSON is an ErrorRenderer writing RFC 9457 problem details (application/problem+json): title, status, detail, plus code, request_id and every detail of the error as extension members.
 func ResourceExhausted(format string, args ...any) *errors.Error  // ResourceExhausted creates a 429 error.
 func Unauthenticated(format string, args ...any) *errors.Error  // Unauthenticated creates a 401 error.
 func Unavailable(format string, args ...any) *errors.Error  // Unavailable creates a 503 error: retry later.
@@ -570,9 +575,15 @@ Log keys (contract with dashboards): `request_id`, `trace_id`, `span_id`, `error
 
 Metrics (Prometheus on the admin `/metrics`): `http_server_request_duration_seconds` and `http_server_active_requests` by `http_request_method`, `http_route`, `http_response_status_code`; `db_client_connection_count{state}` and `db_client_connection_max` with `postgres.Enable()`; Go runtime and process metrics.
 
-Middleware chain (fixed): error renderers → route capture → recovery → request id → tracing → metrics → logging → timeout (`HTTP_REQUEST_TIMEOUT`) → max bytes (`HTTP_MAX_BODY_BYTES`) → security headers → CORS (only `gox.WithCORS`) → feature middleware → auth (`gox.WithAuth`) → `gox.WithMiddleware` → mux.
+Middleware chain (fixed): error renderers → route capture → recovery → request id → tracing → metrics → logging → timeout (`HTTP_REQUEST_TIMEOUT`) → max bytes (`HTTP_MAX_BODY_BYTES`) → security headers → CORS (only `gox.WithCORS`) → cross-origin protection → feature middleware → auth (`gox.WithAuth`) → `gox.WithMiddleware` → mux.
 
 Forms (gox/web): `GET` renders the form; `POST` decodes with `web.Form[T]`, re-renders the same component with status 422 on `FieldErrors`, and on success calls `web.AddFlash` then `web.Redirect` (303, or `HX-Redirect` for htmx). `FieldErrors` is keyed by the `form` tag name; messages are `required`, `must be at least N characters`, `must be at most N characters`, `must be at least N`, `must be at most N`, `must be a whole number`, `must be a number`, `must be a duration such as 30s or 5m`. CSRF is automatic with sessions and applies to form submissions (`application/x-www-form-urlencoded`, `multipart/form-data`, or no Content-Type): include `@web.CSRFField(page)` (hidden field `_csrf`) in forms and `@web.CSRFMeta(page)` in the layout head (`X-CSRF-Token` header for htmx and fetch); a missing or wrong token is a 403. JSON requests (`Content-Type: application/json`) are never checked, so a JSON API and HTML pages coexist in one service and curl works; `web.WithCSRFExempt("/webhooks/")` skips prefixes that third parties call. Rejections by any middleware log the real route.
+
+Cross-origin protection (always on): a state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) that a browser sends from another origin is a 403 `permission_denied`, decided from `Sec-Fetch-Site` and `Origin` with no token. Requests without those headers (curl, webhooks, server-to-server) and safe methods pass; origins in `gox.WithCORS` are trusted. A single-page app on the same origin needs nothing else.
+
+Other error shapes: `gox.WithErrorRenderer(gox.ProblemJSON)` replaces the envelope with RFC 9457 `application/problem+json` for every error, framework rejections included (`title`, `status`, `detail`, `code`, `request_id`, and each `WithDetail` entry as a top-level member). Pass your own `gox.ErrorRenderer` to pick a shape by path; return false to fall back to the envelope.
+
+Single-page apps: `gox.HTTP(gox.WithSPA(gox.SPAConfig{FS: dist.FS, ServerPrefixes: []string{"/api/"}}))` serves the built app from the API's origin: files at their paths (`/assets/` cached forever), `index.html` for every other `GET` so client routes deep-link, the error envelope for unmatched requests under the server prefixes. `SPAConfig.Head` injects per-request tags before `</head>`. Registered routes always win.
 
 HTML errors (gox/web): `web.Enable` registers an error renderer, so `web.Error`, panics, timeouts, 404/405 and CSRF failures render the error page for requests that want HTML (htmx requests, or `Accept` preferring `text/html`) and the JSON envelope for everything else, with the same status either way. The `ErrorPage` function returns a body fragment; gox wraps it in the layout and `page` is never nil. Set `web.PageFrom(r).Title` before `web.Render`, in Go: templ components render lazily and the layout prints the title before the body.
 
