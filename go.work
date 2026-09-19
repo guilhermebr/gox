@@ -5,6 +5,7 @@ use (
 	./examples
 	./jwt
 	./monetary
+	./openapi
 	./osrelease
 	./postgres
 	./providers/supabase

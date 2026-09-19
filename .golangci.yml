@@ -63,6 +63,7 @@ linters:
             - "!**/postgres/**"
             - "!**/providers/**"
             - "!**/jwt/**"
+            - "!**/openapi/**"
             - "!**/web/**"
             - "!**/http/**"
             - "!**/logger/**"
@@ -89,6 +90,8 @@ linters:
               desc: pkg/* never imports a feature package
             - pkg: github.com/guilhermebr/gox/jwt
               desc: pkg/* never imports a feature package
+            - pkg: github.com/guilhermebr/gox/openapi
+              desc: pkg/* never imports a feature package
             - pkg: github.com/guilhermebr/gox/web
               desc: pkg/* never imports a feature package
             - pkg: github.com/guilhermebr/gox/examples
@@ -104,6 +107,8 @@ linters:
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/jwt
               desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/openapi
+              desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/web
               desc: feature packages do not import each other
         providers:
@@ -115,13 +120,30 @@ linters:
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/jwt
               desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/openapi
+              desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/web
+              desc: feature packages do not import each other
+        feature-openapi:
+          list-mode: lax
+          files:
+            - "**/openapi/**"
+          deny:
+            - pkg: github.com/guilhermebr/gox/postgres
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/jwt
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/web
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/providers/supabase
               desc: feature packages do not import each other
         feature-jwt:
           list-mode: lax
           files:
             - "**/jwt/**"
           deny:
+            - pkg: github.com/guilhermebr/gox/openapi
+              desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/postgres
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/providers/supabase
@@ -138,6 +160,8 @@ linters:
             - pkg: github.com/guilhermebr/gox/providers/supabase
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/jwt
+              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/openapi
               desc: feature packages do not import each other
         cmd:
           list-mode: strict
