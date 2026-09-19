@@ -10,7 +10,6 @@
 package main
 
 import (
-	"embed"
 	"net/http"
 	"os"
 	"sync"
@@ -18,11 +17,9 @@ import (
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/web"
 
+	"github.com/guilhermebr/gox/examples/web/static"
 	"github.com/guilhermebr/gox/examples/web/views"
 )
-
-//go:embed static
-var static embed.FS
 
 // guestbook is the example's whole "domain": names people signed with.
 type guestbook struct {
@@ -46,7 +43,7 @@ func main() {
 	a := gox.MustNew("web-example",
 		gox.HTTP(),
 		web.Enable(
-			web.WithStatic(mustSub(static, "static")),
+			web.WithStatic(static.FS),
 			web.WithSessions(),
 			web.WithLayout(views.Layout),
 			web.WithErrorPage(views.ErrorPage),
