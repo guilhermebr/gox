@@ -33,7 +33,6 @@ type options struct {
 	prop      propagation.TextMapPropagator
 	retries   int
 	backoff   time.Duration
-	base      http.RoundTripper
 }
 
 // Option configures New.
@@ -66,29 +65,21 @@ func WithRetry(attempts int, base time.Duration) Option {
 	}
 }
 
-// WithTransport replaces the base transport (for tests or custom TLS).
-func WithTransport(rt http.RoundTripper) Option {
-	return func(o *options) { o.base = rt }
-}
-
 // New builds a client.
 func New(cfg Config, opts ...Option) *http.Client {
 	o := options{}
 	for _, opt := range opts {
 		opt(&o)
 	}
-	rt := o.base
-	if rt == nil {
-		t := http.DefaultTransport.(*http.Transport).Clone()
-		if cfg.MaxIdleConns > 0 {
-			t.MaxIdleConns = cfg.MaxIdleConns
-			t.MaxIdleConnsPerHost = cfg.MaxIdleConns
-		}
-		if cfg.IdleConnTimeout > 0 {
-			t.IdleConnTimeout = cfg.IdleConnTimeout
-		}
-		rt = t
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	if cfg.MaxIdleConns > 0 {
+		t.MaxIdleConns = cfg.MaxIdleConns
+		t.MaxIdleConnsPerHost = cfg.MaxIdleConns
 	}
+	if cfg.IdleConnTimeout > 0 {
+		t.IdleConnTimeout = cfg.IdleConnTimeout
+	}
+	var rt http.RoundTripper = t
 	if o.retries > 0 {
 		rt = &retryTransport{next: rt, attempts: o.retries, backoff: o.backoff}
 	}

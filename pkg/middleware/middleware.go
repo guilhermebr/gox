@@ -101,37 +101,17 @@ func saneID(id string) bool {
 	return true
 }
 
-// LoggingOption configures Logging.
-type LoggingOption func(*loggingOptions)
-
-type loggingOptions struct {
-	skip map[string]bool
-}
-
-// WithSkipPaths replaces the default set of paths that are not logged
-// (/healthz and /readyz).
-func WithSkipPaths(paths ...string) LoggingOption {
-	return func(o *loggingOptions) {
-		o.skip = make(map[string]bool, len(paths))
-		for _, p := range paths {
-			o.skip[p] = true
-		}
-	}
-}
-
 // Logging writes one line per request (method, path, route, status, bytes,
 // duration) at a level derived from the status, and stores a logger with
-// the request fields in the context for handlers.
-func Logging(logger *slog.Logger, opts ...LoggingOption) Middleware {
-	o := loggingOptions{skip: map[string]bool{"/healthz": true, "/readyz": true}}
-	for _, opt := range opts {
-		opt(&o)
-	}
+// the request fields in the context for handlers. Health probes are not
+// logged.
+func Logging(logger *slog.Logger) Middleware {
+	skip := map[string]bool{"/healthz": true, "/readyz": true}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqLog := logger.With(slog.String("method", r.Method), slog.String("path", r.URL.Path))
 			r = r.WithContext(log.WithContext(r.Context(), reqLog))
-			if o.skip[r.URL.Path] {
+			if skip[r.URL.Path] {
 				next.ServeHTTP(w, r)
 				return
 			}

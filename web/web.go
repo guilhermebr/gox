@@ -25,7 +25,6 @@ type options struct {
 	layout      Layout
 	errorPage   ErrorPage
 	resolveUser func(r *http.Request, s *Session) (any, error)
-	loginPath   string
 	csrfExempt  []string
 }
 
@@ -76,11 +75,6 @@ func WithCSRFExempt(prefixes ...string) Option {
 	return func(o *options) { o.csrfExempt = append(o.csrfExempt, prefixes...) }
 }
 
-// WithLoginPath sets where RequireSession redirects (default /login).
-func WithLoginPath(p string) Option {
-	return func(o *options) { o.loginPath = p }
-}
-
 // feature is the built state shared by the middleware and helpers.
 type feature struct {
 	cfg         *Config
@@ -91,7 +85,6 @@ type feature struct {
 	layout      Layout
 	errorPage   ErrorPage
 	resolveUser func(r *http.Request, s *Session) (any, error)
-	loginPath   string
 	client      *http.Client
 	backend     bool
 	csrfExempt  []string
@@ -114,13 +107,13 @@ func featureFrom(r *http.Request) *feature {
 // Accept preferring text/html) while other clients keep the JSON envelope.
 func Enable(opts ...Option) gox.Option {
 	return func(b *gox.Builder) error {
-		o := options{layout: defaultLayout, errorPage: defaultErrorPage, loginPath: "/login"}
+		o := options{layout: defaultLayout, errorPage: defaultErrorPage}
 		for _, opt := range opts {
 			opt(&o)
 		}
 		cfg := &Config{}
 		b.ConfigSection("WEB", cfg, "web.Enable()")
-		f := &feature{cfg: cfg, layout: o.layout, errorPage: o.errorPage, resolveUser: o.resolveUser, loginPath: o.loginPath, backend: o.backend, csrfExempt: o.csrfExempt}
+		f := &feature{cfg: cfg, layout: o.layout, errorPage: o.errorPage, resolveUser: o.resolveUser, backend: o.backend, csrfExempt: o.csrfExempt}
 
 		b.Middleware(f.middleware(&o))
 		b.ErrorRenderer(f.errorRenderer)

@@ -29,7 +29,6 @@ type Package struct {
 	Config     string // config struct name, "" for none
 	Section    string // env section name ("POSTGRES"), "" for the base config
 	DeclaredBy string // option that registers the section
-	APIOnly    bool   // document the API and skip the config
 	ConfigOnly bool   // document the config and skip the API
 }
 
@@ -82,7 +81,7 @@ func Generate(spec Spec) ([]byte, error) {
 			}
 			fmt.Fprintf(&buf, "## API: %s\n\nimport \"%s\"\n\n```go\n%s```\n\n", p.Title, p.ImportPath, api)
 		}
-		if p.Config == "" || p.APIOnly {
+		if p.Config == "" {
 			continue
 		}
 		prefix := "<PREFIX>"

@@ -86,8 +86,7 @@ func (s *Session) Clear()                                 // logout
 func (s *Session) Token() string                          // the backend bearer token, if SetToken was called
 func (s *Session) SetToken(token string)
 func WithSessionUser(fn func(r *http.Request, s *Session) (any, error)) Option   // resolves Page.User once per request
-func RequireSession(next http.HandlerFunc) http.HandlerFunc   // redirects to WithLoginPath (default /login) when no token
-func WithLoginPath(p string) Option
+func RequireSession(next http.HandlerFunc) http.HandlerFunc   // redirects to /login when no token
 
 // CSRF (automatic with sessions): token in session, checked on POST/PUT/PATCH/DELETE
 // from the _csrf form field or the X-CSRF-Token header; HTMX gets it from a meta tag
