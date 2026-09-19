@@ -4,8 +4,8 @@ go 1.26
 
 require (
 	github.com/ardanlabs/conf/v3 v3.13.0
-	github.com/google/uuid v1.6.0
-	github.com/supabase-community/gotrue-go v1.2.0
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/supabase-community/gotrue-go v1.2.0 // indirect
 	github.com/supabase-community/supabase-go v0.0.4
 )
 

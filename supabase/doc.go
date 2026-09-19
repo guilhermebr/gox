@@ -1,3 +1,3 @@
-// Package supabase constructs a Supabase client from environment-driven
-// configuration and provides small auth helpers on top of it.
+// Package supabase builds a Supabase client from configuration and plugs it
+// into a gox service.
 package supabase
