@@ -1,4 +1,4 @@
-go 1.26
+go 1.26.0
 
 use (
 	.
@@ -8,5 +8,6 @@ use (
 	./osrelease
 	./postgres
 	./providers/supabase
+	./providers/workos
 	./web
 )
