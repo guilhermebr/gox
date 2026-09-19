@@ -439,18 +439,12 @@ func Enable(opts ...Option) gox.Option  // Enable registers the JWT config secti
 import "github.com/guilhermebr/gox/supabase"
 
 ```go
-var ErrNilClient error  // ErrNilClient is returned by the auth helpers when called with a nil client.
 type Config struct{ URL string; Key string }  // Config is the SUPABASE config section: BILLING_SUPABASE_* under a service prefixed BILLING.
 func (c *Config) Validate() error  // Validate checks the URL is absolute.
-type UserInfo struct{ ID string; Email string; Phone string; EmailConfirmed bool; PhoneConfirmed bool; Role string; UserMetadata map[string]any; AppMetadata map[string]any; LastSignInAt *time.Time; CreatedAt time.Time; UpdatedAt time.Time }  // UserInfo is a domain-agnostic representation of a Supabase Auth user.
-func GetUserFromToken(_ context.Context, client *supabase.Client, token string) (*UserInfo, error)  // GetUserFromToken retrieves user information for the given access token.
-func AdminDeleteUser(_ context.Context, client *supabase.Client, userID string) error  // AdminDeleteUser deletes a user by ID.
 func Enable() gox.Option  // Enable registers the SUPABASE config section and a client component at StageClient whose readiness probes the project's auth health endpoint.
 func From(a *gox.App) *supabase.Client  // From returns the client.
 func New(prefix string) (*supabase.Client, error)  // New creates a client from <PREFIX>_SUPABASE_URL and <PREFIX>_SUPABASE_KEY. Deprecated: pass supabase.Enable() to gox.New and read the client with supabase.From.
 func NewFromConfig(cfg Config) (*supabase.Client, error)  // NewFromConfig creates a new Supabase client from a pre-loaded Config.
-func SignInWithEmail(_ context.Context, client *supabase.Client, email, password string) (string, error)  // SignInWithEmail authenticates a user with email and password.
-func SignUpWithEmail(_ context.Context, client *supabase.Client, email, password string, metadata map[string]any) (string, error)  // SignUpWithEmail registers a new user with email and password.
 ```
 
 ## Config: supabase (declared by supabase.Enable())
@@ -484,14 +478,13 @@ func WithBackend() Option  // WithBackend enables APIFrom: a per-request client 
 func WithCSRFExempt(prefixes ...string) Option  // WithCSRFExempt skips the CSRF check for paths with these prefixes, for endpoints that third parties call with their own authentication (webhooks).
 func WithErrorPage(p ErrorPage) Option  // WithErrorPage replaces the default error page.
 func WithLayout(l Layout) Option  // WithLayout sets the layout Render wraps pages in.
-func WithLoginPath(p string) Option  // WithLoginPath sets where RequireSession redirects (default /login).
 func WithSessionUser(fn func(r *http.Request, s *Session) (any, error)) Option  // WithSessionUser resolves Page.User once per request from the session (typically by calling the backend with APIFrom).
 func WithSessions() Option  // WithSessions enables the encrypted cookie session (SessionFrom) and CSRF checks on every state-changing request.
 func WithStatic(fsys fs.FS) Option  // WithStatic serves fsys under WEB_STATIC_PREFIX (default /static/) with content-hashed URLs in production; Page.Asset resolves names.
 type Page struct{ Title string; Path string; User any; Flashes []Flash; CSRFToken string; Nonce string; Data map[string]any; Request *http.Request }  // Page is the per-request context every layout receives.
 func PageFrom(r *http.Request) *Page  // PageFrom returns the request's Page, building it on first use: flashes are taken, the CSRF token is ensured and the session user is resolved.
 func (p *Page) Asset(name string) string  // Asset returns the URL for a static file: content-hashed in production, plain in development.
-type Session struct{ /* unexported */ }  // Session is the per-request, cookie-backed session.
+type Session struct{ /* unexported */ }  // 
 func SessionFrom(r *http.Request) *Session  // SessionFrom returns the request's session.
 func (s *Session) Clear()  // Clear drops every value and expires the cookie: logout.
 func (s *Session) Delete(key string)  // Delete removes a value.
@@ -510,7 +503,7 @@ func Partial(w http.ResponseWriter, r *http.Request, c templ.Component) error  /
 func Redirect(w http.ResponseWriter, r *http.Request, url string)  // Redirect sends the browser to url: an HX-Redirect for htmx requests, a 303 See Other otherwise (the PRG pattern after a form post).
 func Render(w http.ResponseWriter, r *http.Request, c templ.Component) error  // Render writes c with status 200 inside the layout, or alone for htmx fragment requests.
 func RenderStatus(w http.ResponseWriter, r *http.Request, status int, c templ.Component) error  // RenderStatus is Render with an explicit status (422 for a form that failed validation).
-func RequireSession(next http.HandlerFunc) http.HandlerFunc  // RequireSession wraps a handler so requests without a session token are redirected to the login path (WithLoginPath, default /login).
+func RequireSession(next http.HandlerFunc) http.HandlerFunc  // RequireSession wraps a handler so requests without a session token are redirected to /login.
 ```
 
 ## Config: web (declared by web.Enable())
