@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
@@ -403,6 +403,25 @@ func Tx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (err 
 <PREFIX>_POSTGRES_HEALTH_CHECK_PERIOD (duration, default 1m)
 <PREFIX>_POSTGRES_CONNECT_TIMEOUT (duration, default 10s)
 <PREFIX>_POSTGRES_MIGRATE (bool, default true): run embedded migrations at boot (WithMigrations)
+
+## API: jobs
+
+import "github.com/guilhermebr/gox/jobs"
+
+```go
+type Config struct{ Work bool; MaxWorkers int; Migrate bool }  // Config is the JOBS config section: BILLING_JOBS_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+func Enable(pool func(*gox.App) *pgxpool.Pool) gox.Option  // Enable declares the job queue on the pool that pool returns; pass postgres.From.
+func From(a *gox.App) *river.Client[pgx.Tx]  // From returns the River client: Insert and InsertTx enqueue jobs, the latter inside the caller's transaction so a job exists only if the change that needs it committed.
+func Register[T river.JobArgs](a *gox.App, w river.Worker[T])  // Register adds the worker for one kind of job.
+func Schedule(a *gox.App, spec string, args river.JobArgs) error  // Schedule enqueues args on a schedule: a cron expression ("0 3 * * *", optionally prefixed with a zone, "CRON_TZ=America/New_York 0 0 * * *") or an interval ("@every 5m").
+```
+
+## Config: jobs (declared by jobs.Enable())
+
+<PREFIX>_JOBS_WORK (bool, default true): work jobs in this process; false makes it insert-only (an API next to a separate worker)
+<PREFIX>_JOBS_MAX_WORKERS (int, default 10): jobs worked at once in this process
+<PREFIX>_JOBS_MIGRATE (bool, default true): create or upgrade River's tables at boot
 
 ## API: jwt
 
