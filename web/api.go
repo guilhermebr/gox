@@ -134,17 +134,8 @@ func apiError(status int, contentType string, raw []byte) error {
 	}
 }
 
-var codeNames = map[string]errors.Code{
-	"canceled": errors.CodeCanceled, "unknown": errors.CodeUnknown, "invalid_argument": errors.CodeInvalidArgument,
-	"deadline_exceeded": errors.CodeDeadlineExceeded, "not_found": errors.CodeNotFound, "already_exists": errors.CodeAlreadyExists,
-	"permission_denied": errors.CodePermissionDenied, "resource_exhausted": errors.CodeResourceExhausted,
-	"failed_precondition": errors.CodeFailedPrecondition, "aborted": errors.CodeAborted, "out_of_range": errors.CodeOutOfRange,
-	"unimplemented": errors.CodeUnimplemented, "internal": errors.CodeInternal, "unavailable": errors.CodeUnavailable,
-	"data_loss": errors.CodeDataLoss, "unauthenticated": errors.CodeUnauthenticated,
-}
-
 func codeFromName(name string, status int) errors.Code {
-	if c, ok := codeNames[name]; ok {
+	if c, ok := errors.ParseCode(name); ok {
 		return c
 	}
 	if status >= 500 {

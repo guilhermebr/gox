@@ -92,6 +92,17 @@ func (c Code) String() string {
 	return "unknown"
 }
 
+// ParseCode returns the Code for a name from an envelope ("not_found"). ok is
+// false for names it does not know.
+func ParseCode(name string) (code Code, ok bool) {
+	for c, n := range codeNames {
+		if n == name {
+			return c, true
+		}
+	}
+	return CodeUnknown, false
+}
+
 // HTTPStatus returns the HTTP status the code renders as.
 func (c Code) HTTPStatus() int {
 	if s, ok := httpStatus[c]; ok {

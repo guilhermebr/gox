@@ -215,3 +215,15 @@ func TestWithHTTPStatusOverridesOnlyTheStatus(t *testing.T) {
 		t.Fatal("errors without an override keep the code's status")
 	}
 }
+
+func TestParseCodeRoundTripsEveryName(t *testing.T) {
+	for c := errors.CodeOK; c <= errors.CodeUnauthenticated; c++ {
+		got, ok := errors.ParseCode(c.String())
+		if !ok || got != c {
+			t.Fatalf("ParseCode(%q) = %v, %v", c.String(), got, ok)
+		}
+	}
+	if _, ok := errors.ParseCode("nope"); ok {
+		t.Fatal("unknown name must not parse")
+	}
+}
