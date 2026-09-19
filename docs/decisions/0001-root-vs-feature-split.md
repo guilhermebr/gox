@@ -20,7 +20,7 @@ package that is never imported is never compiled or linked.
   health/admin and HTTP. It depends only on the standard
   library, `ardanlabs/conf` and the OpenTelemetry SDK.
 - Every dependency-heavy feature is a subpackage (`gox/postgres`,
-  `gox/supabase`, `gox/jwt`, `gox/web`). Importing it and passing its
+  `gox/jwt`, `gox/web`, `gox/providers/supabase`). Importing it and passing its
   `Enable()` option to `gox.New` is the opt-in. Its `From(app)` accessor
   returns the built value.
 - Feature packages plug in through the `Builder` extension API

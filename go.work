@@ -7,6 +7,6 @@ use (
 	./monetary
 	./osrelease
 	./postgres
-	./supabase
+	./providers/supabase
 	./web
 )

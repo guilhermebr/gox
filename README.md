@@ -152,6 +152,10 @@ Every feature has the same shape: `Config`, `Enable(opts...) gox.Option`,
 `ConfigSection`, `Component`, `Setup`, `Finish`, `Middleware`,
 `ErrorRenderer` and `Set`. `docs/features.md` walks through one.
 
+Building blocks a service is made of (`postgres`, `jwt`, `web`) live at the
+top level. Clients for third-party services live under `providers/`, one
+module each (`providers/supabase` today; cloud and SaaS APIs later).
+
 ## Start a service
 
 ```

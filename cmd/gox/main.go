@@ -116,7 +116,7 @@ func spec(root string) llmdoc.Spec {
 			{Title: "gox (root)", ImportPath: "github.com/guilhermebr/gox", Dir: filepath.Join(root, "pkg", "config"), Config: "Base", ConfigOnly: true},
 			{Title: "postgres", ImportPath: "github.com/guilhermebr/gox/postgres", Dir: filepath.Join(root, "postgres"), Config: "Config", Section: "POSTGRES", DeclaredBy: "postgres.Enable()"},
 			{Title: "jwt", ImportPath: "github.com/guilhermebr/gox/jwt", Dir: filepath.Join(root, "jwt"), Config: "Config", Section: "JWT", DeclaredBy: "jwt.Enable()"},
-			{Title: "supabase", ImportPath: "github.com/guilhermebr/gox/supabase", Dir: filepath.Join(root, "supabase"), Config: "Config", Section: "SUPABASE", DeclaredBy: "supabase.Enable()"},
+			{Title: "supabase", ImportPath: "github.com/guilhermebr/gox/providers/supabase", Dir: filepath.Join(root, "providers", "supabase"), Config: "Config", Section: "SUPABASE", DeclaredBy: "supabase.Enable()"},
 			{Title: "web", ImportPath: "github.com/guilhermebr/gox/web", Dir: filepath.Join(root, "web"), Config: "Config", Section: "WEB", DeclaredBy: "web.Enable()"},
 		},
 	}

@@ -16,7 +16,9 @@ func From(a *gox.App) *redis.Client        // panics with the standard message i
 ## 1. The module
 
 Each feature is its own module so a consumer's module graph only carries
-what it imports (ADR 0000).
+what it imports (ADR 0000). Building blocks a service is made of (a
+datastore, auth, HTML) live at the top level; a client for a third-party
+service (a cloud or SaaS API) lives under `providers/<name>`.
 
 ```
 mkdir redis && cd redis

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/guilhermebr/gox"
-	"github.com/guilhermebr/gox/supabase"
+	"github.com/guilhermebr/gox/providers/supabase"
 )
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

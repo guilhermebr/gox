@@ -1,4 +1,4 @@
-module github.com/guilhermebr/gox/supabase
+module github.com/guilhermebr/gox/providers/supabase
 
 go 1.26
 
@@ -52,4 +52,4 @@ require (
 
 require github.com/guilhermebr/gox v0.0.0
 
-replace github.com/guilhermebr/gox => ../
+replace github.com/guilhermebr/gox => ../../

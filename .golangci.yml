@@ -61,7 +61,7 @@ linters:
             - "$all"
             - "!**/pkg/**"
             - "!**/postgres/**"
-            - "!**/supabase/**"
+            - "!**/providers/**"
             - "!**/jwt/**"
             - "!**/web/**"
             - "!**/http/**"
@@ -85,7 +85,7 @@ linters:
               desc: pkg/* never imports the root package
             - pkg: github.com/guilhermebr/gox/postgres
               desc: pkg/* never imports a feature package
-            - pkg: github.com/guilhermebr/gox/supabase
+            - pkg: github.com/guilhermebr/gox/providers/supabase
               desc: pkg/* never imports a feature package
             - pkg: github.com/guilhermebr/gox/jwt
               desc: pkg/* never imports a feature package
@@ -100,16 +100,16 @@ linters:
           files:
             - "**/postgres/**"
           deny:
-            - pkg: github.com/guilhermebr/gox/supabase
+            - pkg: github.com/guilhermebr/gox/providers/supabase
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/jwt
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/web
               desc: feature packages do not import each other
-        feature-supabase:
+        providers:
           list-mode: lax
           files:
-            - "**/supabase/**"
+            - "**/providers/**"
           deny:
             - pkg: github.com/guilhermebr/gox/postgres
               desc: feature packages do not import each other
@@ -124,7 +124,7 @@ linters:
           deny:
             - pkg: github.com/guilhermebr/gox/postgres
               desc: feature packages do not import each other
-            - pkg: github.com/guilhermebr/gox/supabase
+            - pkg: github.com/guilhermebr/gox/providers/supabase
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/web
               desc: feature packages do not import each other
@@ -135,7 +135,7 @@ linters:
           deny:
             - pkg: github.com/guilhermebr/gox/postgres
               desc: feature packages do not import each other
-            - pkg: github.com/guilhermebr/gox/supabase
+            - pkg: github.com/guilhermebr/gox/providers/supabase
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/jwt
               desc: feature packages do not import each other

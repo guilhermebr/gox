@@ -2,7 +2,8 @@
 
 Thanks for your interest in contributing! `gox` is a multi-module repository:
 the root module (`github.com/guilhermebr/gox`) plus one module per feature
-package (`postgres`, `supabase`, `jwt`, `web`), the stdlib-only utilities
+package (`postgres`, `jwt`, `web`), the third-party providers
+(`providers/supabase`), the stdlib-only utilities
 (`monetary`, `osrelease`) and `examples`. See `docs/decisions/0000-module-layout.md` for why.
 
 ## Getting started

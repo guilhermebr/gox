@@ -7,7 +7,7 @@ Status: accepted
 
 gox is becoming a framework whose root package (`github.com/guilhermebr/gox`)
 is the one import for a plain HTTP service, while datastores and other heavy
-integrations (`gox/postgres`, `gox/supabase`, `gox/jwt`, `gox/web`) are opted
+integrations (`gox/postgres`, `gox/jwt`, `gox/web`, `gox/providers/*`) are opted
 into by importing them (ADR 0001).
 
 What the compiler links is decided by the import graph, so import-as-opt-in
@@ -31,8 +31,11 @@ Nested modules:
 
 - `github.com/guilhermebr/gox` — root module. Contains the root package and
   `pkg/*`. Depends only on stdlib, `ardanlabs/conf`, and the OpenTelemetry SDK.
-- `github.com/guilhermebr/gox/postgres`, `.../supabase`, `.../jwt`, `.../web`
-  — one module each, requiring the root module.
+- `github.com/guilhermebr/gox/postgres`, `.../jwt`, `.../web` — one module
+  each, requiring the root module.
+- `github.com/guilhermebr/gox/providers/<name>` — clients for third-party
+  services (`supabase` today), one module each with the same rules as a
+  feature package.
 - `github.com/guilhermebr/gox/monetary`, `.../osrelease` — one module each,
   stdlib only.
 - `github.com/guilhermebr/gox/examples` — one module for all examples, using
