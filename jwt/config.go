@@ -6,15 +6,18 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 )
 
 // Config is the JWT config section: BILLING_JWT_* under a service prefixed
-// BILLING. Set SECRET_KEY for HS256, or PUBLIC_KEY (and PRIVATE_KEY on the
-// service that signs) for RS256.
+// BILLING. Set exactly one key source: SECRET_KEY for HS256, PUBLIC_KEY (and
+// PRIVATE_KEY on the service that signs) for RS256, or JWKS_URL to verify
+// tokens an identity provider issues.
 type Config struct {
-	SecretKey  string        `conf:"mask,help:HS256 secret; set this or PUBLIC_KEY"`
+	SecretKey  string        `conf:"mask,help:HS256 secret; set exactly one of SECRET_KEY or PUBLIC_KEY or JWKS_URL"`
 	PublicKey  string        `conf:"help:PEM RSA public key for RS256 verification"`
+	JWKSURL    string        `conf:"env:JWKS_URL,help:identity provider key set for RS256 verification; keys are cached and follow rotation; set ISSUER to the provider's issuer"`
 	PrivateKey string        `conf:"mask,help:PEM RSA private key for RS256 signing; omit on verify-only services"`
 	Issuer     string        `conf:"default:gox"`
 	Expiry     time.Duration `conf:"default:24h"`
@@ -24,11 +27,22 @@ type Config struct {
 // PEM keys parse.
 func (c *Config) Validate() error {
 	var errs []error
-	switch {
-	case c.SecretKey == "" && c.PublicKey == "":
-		errs = append(errs, errors.New("JWT_SECRET_KEY (HS256) or JWT_PUBLIC_KEY (RS256) is required"))
-	case c.SecretKey != "" && c.PublicKey != "":
-		errs = append(errs, errors.New("set JWT_SECRET_KEY or JWT_PUBLIC_KEY, not both"))
+	sources := 0
+	for _, v := range []string{c.SecretKey, c.PublicKey, c.JWKSURL} {
+		if v != "" {
+			sources++
+		}
+	}
+	if sources != 1 {
+		errs = append(errs, errors.New("set exactly one of JWT_SECRET_KEY (HS256), JWT_PUBLIC_KEY (RS256) or JWT_JWKS_URL (RS256 from an identity provider)"))
+	}
+	if c.JWKSURL != "" {
+		if u, err := url.Parse(c.JWKSURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			errs = append(errs, fmt.Errorf("JWT_JWKS_URL must be an absolute http(s) URL, got %q", c.JWKSURL))
+		}
+		if c.PrivateKey != "" {
+			errs = append(errs, errors.New("JWT_PRIVATE_KEY cannot be combined with JWT_JWKS_URL: the identity provider signs"))
+		}
 	}
 	if c.SecretKey != "" && len(c.SecretKey) < 32 {
 		errs = append(errs, errors.New("JWT_SECRET_KEY must be at least 32 bytes"))

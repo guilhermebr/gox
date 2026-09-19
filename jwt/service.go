@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"crypto/rsa"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -26,29 +27,45 @@ type Claims struct {
 	Email       string `json:"email"`
 	AccountType string `json:"account_type"`
 	jwt.RegisteredClaims
+
+	// Raw holds every claim in a validated token, including the ones
+	// without a field here: what an identity provider adds (org_id,
+	// permissions, roles). It is not part of issued tokens.
+	Raw map[string]any `json:"-"`
+}
+
+// UnmarshalJSON decodes the typed fields and keeps the whole claim set in Raw.
+func (c *Claims) UnmarshalJSON(b []byte) error {
+	type plain Claims
+	if err := json.Unmarshal(b, (*plain)(c)); err != nil {
+		return err
+	}
+	return json.Unmarshal(b, &c.Raw)
 }
 
 // Service signs and validates tokens with one algorithm: HS256 with a
-// shared secret, or RS256 with an RSA key pair. Tokens signed with any
-// other algorithm are rejected.
+// shared secret, or RS256 with an RSA key pair or an identity provider's
+// key set. Tokens signed with any other algorithm are rejected.
 type Service struct {
 	method    jwt.SigningMethod
 	signKey   any
-	verifyKey any
+	verifyKey jwt.Keyfunc
 	issuer    string
 	expiry    time.Duration
 }
 
+func staticKey(k any) jwt.Keyfunc { return func(*jwt.Token) (any, error) { return k, nil } }
+
 // NewHS256 creates a Service that signs and verifies with a shared secret.
 func NewHS256(secret []byte, issuer string, expiry time.Duration) *Service {
-	return &Service{method: jwt.SigningMethodHS256, signKey: secret, verifyKey: secret, issuer: issuer, expiry: expiry}
+	return &Service{method: jwt.SigningMethodHS256, signKey: secret, verifyKey: staticKey(secret), issuer: issuer, expiry: expiry}
 }
 
 // NewRS256 creates a Service that verifies with pub and, when priv is not
 // nil, signs with it. A service that only validates tokens issued
 // elsewhere passes nil.
 func NewRS256(priv *rsa.PrivateKey, pub *rsa.PublicKey, issuer string, expiry time.Duration) *Service {
-	s := &Service{method: jwt.SigningMethodRS256, verifyKey: pub, issuer: issuer, expiry: expiry}
+	s := &Service{method: jwt.SigningMethodRS256, verifyKey: staticKey(pub), issuer: issuer, expiry: expiry}
 	if priv != nil {
 		s.signKey = priv
 	}
@@ -62,6 +79,9 @@ func NewFromConfig(cfg Config) (*Service, error) {
 	}
 	if cfg.SecretKey != "" {
 		return NewHS256([]byte(cfg.SecretKey), cfg.Issuer, cfg.Expiry), nil
+	}
+	if cfg.JWKSURL != "" {
+		return NewJWKS(cfg.JWKSURL, cfg.Issuer, nil), nil
 	}
 	pub, err := parsePublicKey(cfg.PublicKey)
 	if err != nil {
@@ -109,9 +129,7 @@ func (s *Service) ValidateToken(tokenString string) (*Claims, error) {
 	if s.issuer != "" {
 		opts = append(opts, jwt.WithIssuer(s.issuer))
 	}
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(*jwt.Token) (any, error) {
-		return s.verifyKey, nil
-	}, opts...)
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, s.verifyKey, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
