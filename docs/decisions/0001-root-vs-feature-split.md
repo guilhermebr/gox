@@ -17,7 +17,7 @@ package that is never imported is never compiled or linked.
 
 - The root package `github.com/guilhermebr/gox` is the only import a plain
   service needs. It contains lifecycle, config, logging, observability,
-  health/admin and (from Phase 2) HTTP. It depends only on the standard
+  health/admin and HTTP. It depends only on the standard
   library, `ardanlabs/conf` and the OpenTelemetry SDK.
 - Every dependency-heavy feature is a subpackage (`gox/postgres`,
   `gox/supabase`, `gox/jwt`, `gox/web`). Importing it and passing its

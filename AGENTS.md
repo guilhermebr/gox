@@ -9,9 +9,9 @@ and `llm.txt`.
 
 An opinionated Go service framework: a root package that is the one import
 for a plain HTTP service, plus feature packages opted in by import
-(`postgres`, `jwt`, `supabase`, `web`). Read `GOX_FRAMEWORK_PLAN.md` for the
-design and phases, `docs/decisions/` for why each choice was made, and
-`docs/audit-consumers.md` for the four services the design serves.
+(`postgres`, `jwt`, `supabase`, `web`). Read `docs/guide.md` for the
+design, `docs/features.md` for how feature packages plug in, and
+`docs/decisions/` for why each choice was made.
 
 ## Layout and dependency direction (lint-enforced)
 

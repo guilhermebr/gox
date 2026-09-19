@@ -1,12 +1,12 @@
 # 0007. gox/web: server-rendered HTML with templ
 
 Date: 2026-09-13
-Status: accepted (API confirmed 2026-09-13; implemented in Phase 3b)
+Status: accepted
 
 ## Context
 
-Two of the four audited services are server-rendered templ apps
-(`docs/audit-consumers.md` §7). What they share: templ with explicit typed
+The existing server-rendered services this package was designed from are
+templ apps. What they share: templ with explicit typed
 page parameters, Alpine.js for interactivity, HTMX used lightly as a form
 poster, the raw backend JWT in an `HttpOnly` cookie, flash state threaded by
 hand, no CSRF, no custom error pages, and a web layer that calls the

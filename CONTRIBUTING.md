@@ -54,7 +54,7 @@ corresponding targets.
 - **Respect the dependency direction.** `pkg/*` never imports the root or a
   feature package; the root imports only `pkg/*`, stdlib, `ardanlabs/conf` and
   OpenTelemetry; `monetary` and `osrelease` are stdlib only. `depguard` enforces
-  this; see `GOX_FRAMEWORK_PLAN.md` §2.
+  this; see `docs/decisions/0001-root-vs-feature-split.md`.
 - **Match the config pattern.** Configuration uses `github.com/ardanlabs/conf/v3`;
   feature packages register a config section under the service prefix.
 - **Format before committing.** `make fmt` (or `gofmt -w .`).

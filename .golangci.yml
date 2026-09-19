@@ -2,7 +2,7 @@
 # Run from a module directory: golangci-lint run --config ../.golangci.yml ./...
 # (the Makefile does this for you).
 #
-# depguard enforces the dependency direction from GOX_FRAMEWORK_PLAN.md §2:
+# depguard enforces the dependency direction (docs/decisions/0001-root-vs-feature-split.md):
 #   root gox            -> pkg/*, stdlib, ardanlabs/conf, OpenTelemetry only
 #   pkg/*               -> other pkg/*, stdlib, third-party; never root or features
 #   feature packages    -> root, pkg/*, their own deps; never other features or shims

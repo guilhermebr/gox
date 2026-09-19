@@ -8,7 +8,7 @@ Status: accepted
 gox is becoming a framework whose root package (`github.com/guilhermebr/gox`)
 is the one import for a plain HTTP service, while datastores and other heavy
 integrations (`gox/postgres`, `gox/supabase`, `gox/jwt`, `gox/web`) are opted
-into by importing them (`GOX_FRAMEWORK_PLAN.md` §1 and §2).
+into by importing them (ADR 0001).
 
 What the compiler links is decided by the import graph, so import-as-opt-in
 holds with any module layout. What differs is the consumer's **module graph**:
@@ -22,8 +22,7 @@ holds with any module layout. What differs is the consumer's **module graph**:
   packages are versioned and tagged separately (`postgres/v0.3.0`).
 
 Today the repository already has one module per package and no root module.
-The four services that will migrate to gox pin per-subpackage pseudo-versions
-(`docs/audit-consumers.md` §12). The OpenTelemetry `contrib` repository and
+Existing consumers pin per-subpackage pseudo-versions. The OpenTelemetry `contrib` repository and
 `google.golang.org/genproto` use the nested layout at scale.
 
 ## Decision
@@ -54,7 +53,7 @@ Feature modules require a released root version, never a pseudo-version, so
   One shared `.golangci.yml` at the root is passed explicitly with `--config`.
 - Adding a feature package means adding a `go.mod`, a `go.work` entry, a CI
   matrix entry, and a depguard rule.
-- Releases touch several tags. A `make release` helper (Phase 5) can automate
+- Releases touch several tags. A `make release` helper can automate
   the fan-out, but a root change that feature modules need requires a root tag
   first and a feature tag second.
 - `pkg/*` lives inside the root module, so feature modules reach it through

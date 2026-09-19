@@ -36,7 +36,7 @@ better than any router.
   context is canceled at the deadline; the client gets a 504 envelope.
   Streaming handlers must not sit under it.
 
-## Dependencies added in Phase 2
+## Dependencies added
 
 The root module now depends on the OpenTelemetry SDK, its OTLP exporters,
 the Prometheus exporter and `otelhttp`, as the plan allows. Two extra

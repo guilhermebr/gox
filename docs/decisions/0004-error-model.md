@@ -25,7 +25,7 @@ echoed `err.Error()` to clients because user input ends up in it.
   Errors that are not `*Error` render as `internal` / `internal error`
   and never leak their text.
 - Services keep their own sentinels. `gox.WithErrorMapper` registers
-  functions that translate them at the boundary; `gox.Error` (Phase 2)
+  functions that translate them at the boundary; `gox.Error`
   applies the mappers before rendering. Nothing forces a rewrite of a
   domain package to adopt the envelope.
 - Every rejection produced by the framework (recovery, auth, timeout, body
