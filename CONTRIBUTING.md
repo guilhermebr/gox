@@ -3,8 +3,7 @@
 Thanks for your interest in contributing! `gox` is a multi-module repository:
 the root module (`github.com/guilhermebr/gox`) plus one module per feature
 package (`postgres`, `supabase`, `jwt`, `web`), the stdlib-only utilities
-(`monetary`, `osrelease`), the deprecated shims (`http`, `logger`) and
-`examples`. See `docs/decisions/0000-module-layout.md` for why.
+(`monetary`, `osrelease`) and `examples`. See `docs/decisions/0000-module-layout.md` for why.
 
 ## Getting started
 
@@ -68,4 +67,4 @@ corresponding targets.
 ## Releases
 
 Modules are versioned independently using module-path tags, e.g.
-`logger/v0.1.0`, `postgres/v0.2.0`.
+`postgres/v0.2.0`, `web/v0.1.0`.

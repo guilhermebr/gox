@@ -35,8 +35,6 @@ Nested modules:
   — one module each, requiring the root module.
 - `github.com/guilhermebr/gox/monetary`, `.../osrelease` — one module each,
   stdlib only.
-- `github.com/guilhermebr/gox/http`, `.../logger` — deprecated shim modules
-  until removed.
 - `github.com/guilhermebr/gox/examples` — one module for all examples, using
   `replace` directives so it always builds against the working tree.
 - `go.work` at the root lists every module for local development. It is

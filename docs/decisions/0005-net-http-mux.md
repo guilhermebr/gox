@@ -51,13 +51,13 @@ dependencies come with that and are justified here:
 They are imported only from `pkg/otel` and `pkg/middleware`, never from
 the root package directly, which depguard enforces.
 
-## Migration path for the old modules
+## The old modules
 
-`github.com/guilhermebr/gox/http` and `.../logger` are not re-implemented
-over the new packages: doing so would make those tiny modules depend on the
-root module and drag the OpenTelemetry SDK into every consumer that only
-wanted a logger. They stay standalone, marked deprecated, unchanged, and
-are removed one minor version after the root reaches v1.
+The former `github.com/guilhermebr/gox/http` and `.../logger` modules are
+not re-implemented over the new packages: doing so would have made those
+tiny modules depend on the root module and drag the OpenTelemetry SDK into
+every consumer that only wanted a logger. They were removed; consumers
+pinned to their pseudo-versions keep resolving them.
 
 ## Consequences
 

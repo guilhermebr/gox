@@ -182,8 +182,7 @@ commit.
 
 Semantic versioning per module: `v0.x.y` for the root, `postgres/v0.x.y`
 for a feature. Public API is deprecated for one minor version before it is
-removed. The `http` and `logger` modules are deprecated in favor of the root
-package and stay unchanged until then.
+removed.
 
 ## Utilities
 
