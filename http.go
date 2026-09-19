@@ -22,6 +22,7 @@ type HTTPOption func(*httpOptions)
 
 type httpOptions struct {
 	cors *CORSConfig
+	spa  *SPAConfig
 }
 
 // WithCORS enables CORS for the given configuration. It is never on by
@@ -41,7 +42,7 @@ type (
 //
 // Chain: error renderers → route capture → recovery → request id → tracing → metrics →
 // logging → timeout → max bytes → security headers → CORS (WithCORS) →
-// feature middleware (Builder.Middleware) → auth (WithAuth) →
+// cross-origin protection → feature middleware (Builder.Middleware) → auth (WithAuth) →
 // WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
 func HTTP(opts ...HTTPOption) Option {
 	return func(b *Builder) error {
@@ -61,7 +62,7 @@ func HTTP(opts ...HTTPOption) Option {
 			}
 			mux := httpserver.NewMux()
 			chain := []Middleware{
-				withErrorRenderers(b.renderers),
+				withErrorRenderers(append(b.renderers[:len(b.renderers):len(b.renderers)], b.appRenderers...)),
 				middleware.RouteCapture(func(r *http.Request) string {
 					_, pattern := mux.Handler(r)
 					return pattern
@@ -76,9 +77,16 @@ func HTTP(opts ...HTTPOption) Option {
 				middleware.MaxBytes(cfg.MaxBodyBytes),
 				middleware.SecurityHeaders(),
 			}
+			var trusted []string
 			if o.cors != nil {
 				chain = append(chain, middleware.CORS(*o.cors))
+				trusted = o.cors.AllowedOrigins
 			}
+			crossOrigin, err := middleware.CrossOrigin(trusted...)
+			if err != nil {
+				return nil, fmt.Errorf("WithCORS: %w", err)
+			}
+			chain = append(chain, crossOrigin)
 			chain = append(chain, b.features...)
 			if b.auth != nil {
 				chain = append(chain, b.auth)
@@ -86,6 +94,13 @@ func HTTP(opts ...HTTPOption) Option {
 			chain = append(chain, b.middleware...)
 
 			httpserver.RegisterHealth(mux, a.health)
+			if o.spa != nil {
+				spa, err := httpserver.NewSPA(*o.spa)
+				if err != nil {
+					return nil, err
+				}
+				mux.Handle("/", spa)
+			}
 			handler := middleware.Chain(chain...)(httpserver.Handler(mux))
 			srv := httpserver.New(httpserver.Config{
 				Addr:              cfg.Addr,
@@ -99,6 +114,45 @@ func HTTP(opts ...HTTPOption) Option {
 		})
 		return nil
 	}
+}
+
+// SPAConfig describes a single-page application served next to the API.
+type SPAConfig = httpserver.SPAConfig
+
+// WithSPA serves a single-page application from the same origin as the API:
+// files from cfg.FS at their paths, index.html for every other GET so
+// client-side routes deep-link, and the error envelope for unmatched
+// requests under cfg.ServerPrefixes. Registered routes always win. With it,
+// a request with the wrong method for a route is a 404, not a 405.
+func WithSPA(cfg SPAConfig) HTTPOption {
+	return func(o *httpOptions) { o.spa = &cfg }
+}
+
+// ErrorRenderer writes an error response in place of the JSON envelope; it
+// returns false to decline a request.
+type ErrorRenderer = httpx.ErrorRenderer
+
+// WithErrorRenderer replaces the JSON envelope for every error response,
+// from handlers (gox.Error) and from the framework (404, 405, panics,
+// timeouts, body limits) alike. Use it when clients expect another shape:
+// gox.ProblemJSON, or a function that picks a shape by path. Renderers of
+// feature packages, such as gox/web's HTML error pages, still see the
+// request first.
+func WithErrorRenderer(fn ErrorRenderer) Option {
+	return func(b *Builder) error {
+		if fn == nil {
+			return fmt.Errorf("WithErrorRenderer(nil)")
+		}
+		b.appRenderers = append(b.appRenderers, fn)
+		return nil
+	}
+}
+
+// ProblemJSON is an ErrorRenderer writing RFC 9457 problem details
+// (application/problem+json): title, status, detail, plus code, request_id
+// and every detail of the error as extension members.
+func ProblemJSON(w http.ResponseWriter, r *http.Request, status int, env Envelope) bool {
+	return httpx.ProblemJSON(w, r, status, env)
 }
 
 // withErrorRenderers installs the feature renderers above everything else

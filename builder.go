@@ -44,7 +44,8 @@ type Builder struct {
 	http            *httpOptions
 	middleware      []Middleware
 	features        []Middleware
-	renderers       []httpx.ErrorRenderer
+	renderers       []httpx.ErrorRenderer // from feature packages
+	appRenderers    []httpx.ErrorRenderer // from WithErrorRenderer; run after the features
 	auth            Middleware
 	httpClient      bool
 }
