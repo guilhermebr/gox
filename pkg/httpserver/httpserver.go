@@ -17,7 +17,6 @@ import (
 	"github.com/guilhermebr/gox/pkg/health"
 	"github.com/guilhermebr/gox/pkg/httpx"
 	"github.com/guilhermebr/gox/pkg/log"
-	"github.com/guilhermebr/gox/pkg/middleware"
 )
 
 // Config is the server's listen address and timeouts.
@@ -37,9 +36,15 @@ func WithLogger(l *slog.Logger) Option {
 	return func(s *Server) { s.log = l }
 }
 
+// WithName sets the component name used in logs and errors (default "http").
+func WithName(name string) Option {
+	return func(s *Server) { s.name = name }
+}
+
 // Server is a lifecycle Component and Runner around http.Server.
 type Server struct {
 	cfg  Config
+	name string
 	log  *slog.Logger
 	http *http.Server
 
@@ -49,7 +54,7 @@ type Server struct {
 
 // New builds a server for handler. Start binds, Run serves, Stop drains.
 func New(cfg Config, handler http.Handler, opts ...Option) *Server {
-	s := &Server{cfg: cfg, log: slog.Default()}
+	s := &Server{cfg: cfg, name: "http", log: slog.Default()}
 	for _, o := range opts {
 		o(s)
 	}
@@ -65,7 +70,7 @@ func New(cfg Config, handler http.Handler, opts ...Option) *Server {
 }
 
 // Name implements lifecycle.Component.
-func (s *Server) Name() string { return "http" }
+func (s *Server) Name() string { return s.name }
 
 // Addr returns the bound address once Start has succeeded.
 func (s *Server) Addr() string {
@@ -82,12 +87,12 @@ func (s *Server) Addr() string {
 func (s *Server) Start(context.Context) error {
 	ln, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
-		return fmt.Errorf("http: listen %s: %w", s.cfg.Addr, err)
+		return fmt.Errorf("%s: listen %s: %w", s.name, s.cfg.Addr, err)
 	}
 	s.mu.Lock()
 	s.ln = ln
 	s.mu.Unlock()
-	s.log.Info("http server listening", slog.String("addr", ln.Addr().String()))
+	s.log.Info(s.name+" server listening", slog.String("addr", ln.Addr().String()))
 	return nil
 }
 
@@ -97,10 +102,10 @@ func (s *Server) Run(context.Context) error {
 	ln := s.ln
 	s.mu.Unlock()
 	if ln == nil {
-		return errors.New("http: Run before Start")
+		return fmt.Errorf("%s: Run before Start", s.name)
 	}
 	if err := s.http.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("http: serve: %w", err)
+		return fmt.Errorf("%s: serve: %w", s.name, err)
 	}
 	return nil
 }
@@ -118,7 +123,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	if err := s.http.Shutdown(ctx); err != nil {
 		_ = s.http.Close()
-		return fmt.Errorf("http: shutdown: %w (connections closed)", err)
+		return fmt.Errorf("%s: shutdown: %w (connections closed)", s.name, err)
 	}
 	return nil
 }
@@ -138,14 +143,12 @@ func RegisterHealth(mux *http.ServeMux, reg *health.Registry) {
 
 // Handler wraps mux so unmatched requests render the error envelope
 // instead of net/http's plain-text 404 and 405. Matched requests go
-// straight to the mux, which sets r.Pattern and path values; the pattern is
-// then published to the outer middleware through middleware.SetRoute.
+// straight to the mux.
 func Handler(mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h, pattern := mux.Handler(r)
 		if pattern != "" {
 			mux.ServeHTTP(w, r)
-			middleware.SetRoute(r.Context(), r.Pattern)
 			return
 		}
 		// The mux's own error handler: run it against a probe to learn
