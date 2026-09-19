@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/jackc/pgx/v5"
 
 	"github.com/guilhermebr/gox"
@@ -144,5 +146,51 @@ func TestIntegrationBootFailsFastOnUnreachableDatabase(t *testing.T) {
 	err = a.RunContext(ctx)
 	if err == nil || a.Health().IsReady() {
 		t.Fatalf("RunContext = %v ready=%v; a lazy pool must not report healthy", err, a.Health().IsReady())
+	}
+}
+
+// A database that another framework migrated already has a schema_migrations
+// table with its own layout; the service keeps its versions elsewhere.
+func TestIntegrationMigrationsTableCanBeRenamed(t *testing.T) {
+	url := databaseURL(t)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	reset := "DROP TABLE IF EXISTS gox_items, schema_migrations, service_migrations"
+	if _, err := pool.Exec(ctx, reset+"; CREATE TABLE schema_migrations (version varchar PRIMARY KEY); INSERT INTO schema_migrations VALUES ('20260101120000')"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, reset) }()
+
+	if err := postgres.Migrate(ctx, url, migrations, postgres.WithMigrationsTable("service_migrations")); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	var foreign string
+	if err := pool.QueryRow(ctx, "SELECT version FROM schema_migrations").Scan(&foreign); err != nil || foreign != "20260101120000" {
+		t.Fatalf("the other framework's table must be untouched: %q %v", foreign, err)
+	}
+	var version int
+	if err := pool.QueryRow(ctx, "SELECT version FROM service_migrations").Scan(&version); err != nil || version == 0 {
+		t.Fatalf("service_migrations: %d %v", version, err)
+	}
+
+	// The same through Enable, from config.
+	setArgs(t)
+	t.Setenv("BILLING_POSTGRES_URL", url)
+	t.Setenv("BILLING_POSTGRES_MIGRATIONS_TABLE", "service_migrations")
+	a, err := newApp(t, postgres.Enable(postgres.WithMigrations(migrations)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- a.RunContext(runCtx) }()
+	waitReady(t, a)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }

@@ -146,3 +146,10 @@ func TestLegacyNewStillReadsTheOldVariables(t *testing.T) {
 		t.Fatalf("legacy config = %+v", pool.Config().ConnConfig)
 	}
 }
+
+func TestMigrationsTableMustBeAnIdentifier(t *testing.T) {
+	cfg := postgres.Config{URL: "postgres://u:p@h/db", MaxConns: 1, MigrationsTable: "x; DROP TABLE users"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "POSTGRES_MIGRATIONS_TABLE") {
+		t.Fatalf("err = %v", err)
+	}
+}

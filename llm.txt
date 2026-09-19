@@ -382,13 +382,15 @@ func WrapError(cause error, code Code, msg string) *errors.Error  // WrapError k
 import "github.com/guilhermebr/gox/postgres"
 
 ```go
-type Config struct{ URL string; MaxConns int32; MinConns int32; MaxConnLifetime time.Duration; MaxConnIdleTime time.Duration; HealthCheckPeriod time.Duration; ConnectTimeout time.Duration; Migrate bool }  // Config is the POSTGRES config section: BILLING_POSTGRES_URL and friends under a service prefixed BILLING.
+type Config struct{ URL string; MaxConns int32; MinConns int32; MaxConnLifetime time.Duration; MaxConnIdleTime time.Duration; HealthCheckPeriod time.Duration; ConnectTimeout time.Duration; Migrate bool; MigrationsTable string }  // Config is the POSTGRES config section: BILLING_POSTGRES_URL and friends under a service prefixed BILLING.
 func (c *Config) Validate() error  // Validate checks the section after loading.
+type MigrateOption func(*migrateOptions)  // MigrateOption configures Migrate.
+func WithMigrationsTable(name string) MigrateOption  // WithMigrationsTable stores the applied versions in another table than schema_migrations, for a database where another framework already owns that name.
 type Option func(*options)  // Option configures Enable.
 func WithMigrations(fsys fs.FS) Option  // WithMigrations runs the SQL migrations in fsys (golang-migrate layout: NNNN_name.up.sql / .down.sql, anywhere in the tree) at boot, before the app reports ready.
 func Enable(opts ...Option) gox.Option  // Enable declares a Postgres pool: it registers the POSTGRES config section and a component at StageDatastore that connects and pings on Start (a lazy pool must never report healthy), runs migrations, exposes readiness, closes on Stop, and traces queries and pool stats.
 func From(a *gox.App) *pgxpool.Pool  // From returns the pool.
-func Migrate(ctx context.Context, url string, fsys fs.FS) error  // Migrate applies every pending up migration in fsys to the database at url.
+func Migrate(ctx context.Context, url string, fsys fs.FS, opts ...MigrateOption) error  // Migrate applies every pending up migration in fsys to the database at url.
 func New(ctx context.Context, prefix string) (*pgxpool.Pool, error)  // New builds a pool from the pre-framework variables (<PREFIX>_DATABASE_HOST, _PORT, _USER, _PASSWORD, _NAME, _SSLMODE, _POOL_MIN_SIZE, _POOL_MAX_SIZE).
 func Tx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (err error)  // Tx runs fn in a transaction: commit when fn returns nil, rollback otherwise (and on panic).
 ```
@@ -403,6 +405,7 @@ func Tx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (err 
 <PREFIX>_POSTGRES_HEALTH_CHECK_PERIOD (duration, default 1m)
 <PREFIX>_POSTGRES_CONNECT_TIMEOUT (duration, default 10s)
 <PREFIX>_POSTGRES_MIGRATE (bool, default true): run embedded migrations at boot (WithMigrations)
+<PREFIX>_POSTGRES_MIGRATIONS_TABLE (string, default schema_migrations): table recording applied migrations; rename it when another framework owns schema_migrations
 
 ## API: jobs
 

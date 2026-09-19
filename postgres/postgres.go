@@ -124,7 +124,7 @@ func (c *component) Start(ctx context.Context) error {
 	if c.migrations != nil {
 		if !c.cfg.Migrate {
 			c.log.Info("postgres migrations skipped (POSTGRES_MIGRATE=false)")
-		} else if err := Migrate(ctx, c.cfg.URL, c.migrations); err != nil {
+		} else if err := Migrate(ctx, c.cfg.URL, c.migrations, WithMigrationsTable(c.cfg.MigrationsTable)); err != nil {
 			return err
 		}
 	}

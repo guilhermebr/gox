@@ -22,7 +22,11 @@ import (
 // holds an advisory lock on the connection it is given for as long as that
 // connection lives; running it over the shared pool starved a service under
 // a rolling deploy.
-func Migrate(ctx context.Context, url string, fsys fs.FS) error {
+func Migrate(ctx context.Context, url string, fsys fs.FS, opts ...MigrateOption) error {
+	var o migrateOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	if fsys == nil {
 		return errors.New("postgres: Migrate: nil filesystem")
 	}
@@ -45,7 +49,7 @@ func Migrate(ctx context.Context, url string, fsys fs.FS) error {
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("postgres: migrate: connect: %w", err)
 	}
-	driver, err := pgxmigrate.WithInstance(db, &pgxmigrate.Config{})
+	driver, err := pgxmigrate.WithInstance(db, &pgxmigrate.Config{MigrationsTable: o.table})
 	if err != nil {
 		return fmt.Errorf("postgres: migrate: driver: %w", err)
 	}
@@ -59,6 +63,20 @@ func Migrate(ctx context.Context, url string, fsys fs.FS) error {
 		return fmt.Errorf("postgres: migrate: %w", err)
 	}
 	return nil
+}
+
+// MigrateOption configures Migrate.
+type MigrateOption func(*migrateOptions)
+
+type migrateOptions struct {
+	table string
+}
+
+// WithMigrationsTable stores the applied versions in another table than
+// schema_migrations, for a database where another framework already owns
+// that name. Enable reads the same setting from POSTGRES_MIGRATIONS_TABLE.
+func WithMigrationsTable(name string) MigrateOption {
+	return func(o *migrateOptions) { o.table = name }
 }
 
 // migrationRoot finds the directory holding the .sql files: the root of

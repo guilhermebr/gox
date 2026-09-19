@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"time"
 )
 
@@ -18,11 +19,17 @@ type Config struct {
 	HealthCheckPeriod time.Duration `conf:"default:1m"`
 	ConnectTimeout    time.Duration `conf:"default:10s"`
 	Migrate           bool          `conf:"default:true,help:run embedded migrations at boot (WithMigrations)"`
+	MigrationsTable   string        `conf:"default:schema_migrations,help:table recording applied migrations; rename it when another framework owns schema_migrations"`
 }
+
+var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 // Validate checks the section after loading.
 func (c *Config) Validate() error {
 	var errs []error
+	if !identifier.MatchString(c.MigrationsTable) {
+		errs = append(errs, fmt.Errorf("POSTGRES_MIGRATIONS_TABLE must be a plain identifier (letters, digits, underscore), got %q", c.MigrationsTable))
+	}
 	if u, err := url.Parse(c.URL); err != nil || u.Scheme == "" || u.Host == "" {
 		errs = append(errs, fmt.Errorf("POSTGRES_URL must be a postgres:// URL, got %q", mask(c.URL)))
 	}
