@@ -484,7 +484,7 @@ func WithStatic(fsys fs.FS) Option  // WithStatic serves fsys under WEB_STATIC_P
 type Page struct{ Title string; Path string; User any; Flashes []Flash; CSRFToken string; Nonce string; Data map[string]any; Request *http.Request }  // Page is the per-request context every layout receives.
 func PageFrom(r *http.Request) *Page  // PageFrom returns the request's Page, building it on first use: flashes are taken, the CSRF token is ensured and the session user is resolved.
 func (p *Page) Asset(name string) string  // Asset returns the URL for a static file: content-hashed in production, plain in development.
-type Session struct{ /* unexported */ }  // 
+type Session struct{ /* unexported */ }  // Session is the per-request, cookie-backed session.
 func SessionFrom(r *http.Request) *Session  // SessionFrom returns the request's session.
 func (s *Session) Clear()  // Clear drops every value and expires the cookie: logout.
 func (s *Session) Delete(key string)  // Delete removes a value.
