@@ -408,16 +408,18 @@ const RefreshWindow  // RefreshWindow is how close to expiry a token must be for
 var ErrInvalidToken error  // ErrInvalidToken indicates the token failed signature or validity checks.
 var ErrInvalidClaims error  // ErrInvalidClaims indicates the token's claims could not be decoded.
 var ErrNoSigningKey error  // ErrNoSigningKey is returned by GenerateToken on a verify-only service.
-type Claims struct{ UserID string; Email string; AccountType string; jwt.RegisteredClaims }  // Claims are the JWT claims issued and validated by Service.
+type Claims struct{ UserID string; Email string; AccountType string; jwt.RegisteredClaims; Raw map[string]any }  // Claims are the JWT claims issued and validated by Service.
 func ClaimsFromContext(ctx context.Context) (*Claims, bool)  // ClaimsFromContext returns the claims Auth stored for this request.
-type Config struct{ SecretKey string; PublicKey string; PrivateKey string; Issuer string; Expiry time.Duration }  // Config is the JWT config section: BILLING_JWT_* under a service prefixed BILLING.
+func (c *Claims) UnmarshalJSON(b []byte) error  // UnmarshalJSON decodes the typed fields and keeps the whole claim set in Raw.
+type Config struct{ SecretKey string; PublicKey string; JWKSURL string; PrivateKey string; Issuer string; Expiry time.Duration }  // Config is the JWT config section: BILLING_JWT_* under a service prefixed BILLING.
 func (c *Config) Validate() error  // Validate checks that exactly one algorithm is configured and that the PEM keys parse.
 type Option func(*options)  // Option configures Enable.
 func WithAuth() Option  // WithAuth protects every route with Auth, except /healthz and /readyz so platform probes keep working.
-type Service struct{ /* unexported */ }  // Service signs and validates tokens with one algorithm: HS256 with a shared secret, or RS256 with an RSA key pair.
+type Service struct{ /* unexported */ }  // Service signs and validates tokens with one algorithm: HS256 with a shared secret, or RS256 with an RSA key pair or an identity provider's key set.
 func From(a *gox.App) *Service  // From returns the Service.
 func NewFromConfig(cfg Config) (*Service, error)  // NewFromConfig builds a Service from a validated Config.
 func NewHS256(secret []byte, issuer string, expiry time.Duration) *Service  // NewHS256 creates a Service that signs and verifies with a shared secret.
+func NewJWKS(url, issuer string, client *http.Client) *Service  // NewJWKS creates a verify-only Service for tokens an identity provider signs with RS256: keys come from the provider's JWKS document at url, are cached, and follow rotation (an unknown key id triggers one rate-limited refetch).
 func NewRS256(priv *rsa.PrivateKey, pub *rsa.PublicKey, issuer string, expiry time.Duration) *Service  // NewRS256 creates a Service that verifies with pub and, when priv is not nil, signs with it.
 func (s *Service) GenerateToken(userID, email, accountType string) (string, error)  // GenerateToken issues a signed token for the given user.
 func (s *Service) RefreshToken(tokenString string) (string, error)  // RefreshToken returns a fresh token when the supplied one is within RefreshWindow of expiry, otherwise the original token unchanged.
@@ -428,8 +430,9 @@ func Enable(opts ...Option) gox.Option  // Enable registers the JWT config secti
 
 ## Config: jwt (declared by jwt.Enable())
 
-<PREFIX>_JWT_SECRET_KEY (string, secret): HS256 secret; set this or PUBLIC_KEY
+<PREFIX>_JWT_SECRET_KEY (string, secret): HS256 secret; set exactly one of SECRET_KEY or PUBLIC_KEY or JWKS_URL
 <PREFIX>_JWT_PUBLIC_KEY (string): PEM RSA public key for RS256 verification
+<PREFIX>_JWT_JWKS_URL (string): identity provider key set for RS256 verification; keys are cached and follow rotation; set ISSUER to the provider's issuer
 <PREFIX>_JWT_PRIVATE_KEY (string, secret): PEM RSA private key for RS256 signing; omit on verify-only services
 <PREFIX>_JWT_ISSUER (string, default gox)
 <PREFIX>_JWT_EXPIRY (duration, default 24h)

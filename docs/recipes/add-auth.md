@@ -12,7 +12,8 @@ import (
 )
 
 func main() {
-	// BILLING_JWT_SECRET_KEY (HS256) or BILLING_JWT_PUBLIC_KEY (RS256) configures the service.
+	// BILLING_JWT_SECRET_KEY (HS256), BILLING_JWT_PUBLIC_KEY (RS256) or BILLING_JWT_JWKS_URL
+	// (an identity provider, see verify-identity-provider-tokens.md) configures the service.
 	// jwt.WithAuth() protects every route except /healthz and /readyz with a 401 envelope.
 	a := gox.MustNew("billing", gox.HTTP(), jwt.Enable(jwt.WithAuth()))
 
