@@ -21,7 +21,7 @@ iterate over every module; `make ci` is what CI runs.
 Before opening a pull request, make sure the full check suite passes:
 
 ```bash
-make ci          # fmt-check + vet + lint + test + check-deps + check-lint-rules
+make ci          # everything CI runs; `make help` lists the parts
 ```
 
 Individual targets are also available (`make help` lists them):
@@ -56,7 +56,7 @@ corresponding targets.
   this; see `docs/decisions/0001-root-vs-feature-split.md`.
 - **Match the config pattern.** Configuration uses `github.com/ardanlabs/conf/v3`;
   feature packages register a config section under the service prefix.
-- **Format before committing.** `make fmt` (or `gofmt -w .`).
+- **Format before committing.** `make fmt`.
 
 ## Pull requests
 

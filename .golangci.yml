@@ -70,7 +70,6 @@ linters:
             - "!**/osrelease/**"
             - "!**/examples/**"
             - "!**/cmd/**"
-            - "!**/template/**"
           allow:
             - $gostd
             - github.com/guilhermebr/gox$ # the root's own external tests
