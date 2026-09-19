@@ -56,6 +56,7 @@ vulncheck:
 ## generate: regenerate templ code (the templ CLI version is pinned to web/go.mod)
 generate:
 	@cd examples && $(TEMPL) generate -path ./web
+	@$(TEMPL) generate -path ./cmd/gox/internal/scaffold/_template/web
 
 ## generate-check: fail if generated templ code is stale
 generate-check: generate

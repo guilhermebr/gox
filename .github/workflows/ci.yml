@@ -14,16 +14,9 @@ env:
   GOLANGCI_LINT_VERSION: v2.11.4
 
 jobs:
-  modules:
-    name: ${{ matrix.module }}
+  ci:
+    name: make ci
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        module: [., examples, jwt, monetary, osrelease, postgres, supabase, web]
-    defaults:
-      run:
-        working-directory: ${{ matrix.module }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,21 +25,12 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
 
-      - name: go vet
-        run: go vet ./...
-
-      - name: go test -race
-        run: go test ./... -race -count=1
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
-          working-directory: ${{ matrix.module }}
-          args: --config ${{ github.workspace }}/.golangci.yml ./...
+          install-only: true
 
-      - name: format check
-        run: golangci-lint fmt --config ${{ github.workspace }}/.golangci.yml --diff ./...
+      - run: make ci
 
   integration:
     name: integration (postgres)
@@ -74,28 +58,4 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
 
-      - name: go test -tags integration
-        run: make test-integration
-
-  check-deps:
-    name: import-as-opt-in
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: "**/go.sum"
-
-      - name: generated templ code is current
-        run: make generate-check
-
-      - name: llm.txt is current
-        run: make llm-check
-
-      - name: recipes build
-        run: make check-recipes
-
-      - name: import-as-opt-in probes
-        run: make check-deps
+      - run: make test-integration
