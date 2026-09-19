@@ -18,7 +18,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"unicode"
+
+	"github.com/guilhermebr/gox/pkg/config"
 )
 
 // Package describes one source package to document.
@@ -115,7 +116,7 @@ func Generate(spec Spec) ([]byte, error) {
 // API renders every exported declaration of the package in dir as one line
 // each: the signature and the first sentence of its doc comment.
 func API(dir, importPath string) (string, error) {
-	fset, files, err := parseDir(fset0(), dir)
+	fset, files, err := parseDir(dir)
 	if err != nil {
 		return "", err
 	}
@@ -152,14 +153,13 @@ func API(dir, importPath string) (string, error) {
 	return sb.String(), nil
 }
 
-func fset0() *token.FileSet { return token.NewFileSet() }
-
 // parseDir parses the non-test Go files of one directory (one package).
-func parseDir(fset *token.FileSet, dir string) (*token.FileSet, []*ast.File, error) {
+func parseDir(dir string) (*token.FileSet, []*ast.File, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("llmdoc: read %s: %w", dir, err)
 	}
+	fset := token.NewFileSet()
 	var files []*ast.File
 	for _, e := range entries {
 		name := e.Name()
@@ -376,7 +376,7 @@ func (v EnvVar) Line() string {
 // EnvVars walks the named struct in dir and returns the variables conf
 // derives from it, prefixed with prefix.
 func EnvVars(dir, structName, prefix string) ([]EnvVar, error) {
-	fset, files, err := parseDir(fset0(), dir)
+	fset, files, err := parseDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -473,64 +473,12 @@ func goType(t string) string {
 	return t
 }
 
-// EnvName derives the env-var segment conf produces from a field path:
+// EnvName derives the env-var name conf produces from a field path:
 // HTTPClient.Timeout -> HTTP_CLIENT_TIMEOUT, Otel.Enabled -> OTEL_ENABLED.
 func EnvName(path []string) string {
-	var parts []string
-	for _, p := range path {
-		parts = append(parts, camelSplit(p)...)
+	parts := make([]string, len(path))
+	for i, p := range path {
+		parts[i] = config.EnvKey(p)
 	}
-	return strings.ToUpper(strings.Join(parts, "_"))
-}
-
-type charClass int
-
-const (
-	classLower charClass = iota
-	classUpper
-	classNumber
-	classOther
-)
-
-func classOf(r rune) charClass {
-	switch {
-	case unicode.IsLower(r):
-		return classLower
-	case unicode.IsUpper(r):
-		return classUpper
-	case unicode.IsDigit(r):
-		return classNumber
-	}
-	return classOther
-}
-
-// camelSplit mirrors ardanlabs/conf: FOOBar -> [FOO Bar], MaxConns -> [Max Conns].
-func camelSplit(src string) []string {
-	runes := []rune(src)
-	if len(runes) < 2 {
-		return []string{src}
-	}
-	var out []string
-	last := classOf(runes[0])
-	start := 0
-	for i, r := range runes {
-		c := classOf(r)
-		if c != last {
-			switch {
-			case last == classUpper && c != classNumber:
-				if i-start > 1 {
-					out = append(out, string(runes[start:i-1]))
-					start = i - 1
-				}
-			default:
-				out = append(out, string(runes[start:i]))
-				start = i
-			}
-		}
-		if i == len(runes)-1 {
-			out = append(out, string(runes[start:]))
-		}
-		last = c
-	}
-	return out
+	return strings.Join(parts, "_")
 }

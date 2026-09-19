@@ -106,12 +106,14 @@ func newService(args []string) int {
 }
 
 // spec lists what llm.txt documents, in order. Adding a feature package
-// means adding a line here.
+// means adding a line here. The root's API comes from the root package and
+// its env vars from pkg/config.Base, hence two entries.
 func spec(root string) llmdoc.Spec {
 	return llmdoc.Spec{
 		Fragments: filepath.Join(root, "docs", "llm"),
 		Packages: []llmdoc.Package{
-			{Title: "gox (root)", ImportPath: "github.com/guilhermebr/gox", Dir: root, Config: "Base", Section: ""},
+			{Title: "gox (root)", ImportPath: "github.com/guilhermebr/gox", Dir: root},
+			{Title: "gox (root)", ImportPath: "github.com/guilhermebr/gox", Dir: filepath.Join(root, "pkg", "config"), Config: "Base", ConfigOnly: true},
 			{Title: "postgres", ImportPath: "github.com/guilhermebr/gox/postgres", Dir: filepath.Join(root, "postgres"), Config: "Config", Section: "POSTGRES", DeclaredBy: "postgres.Enable()"},
 			{Title: "jwt", ImportPath: "github.com/guilhermebr/gox/jwt", Dir: filepath.Join(root, "jwt"), Config: "Config", Section: "JWT", DeclaredBy: "jwt.Enable()"},
 			{Title: "supabase", ImportPath: "github.com/guilhermebr/gox/supabase", Dir: filepath.Join(root, "supabase"), Config: "Config", Section: "SUPABASE", DeclaredBy: "supabase.Enable()"},
@@ -128,10 +130,7 @@ func docs(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	// The base config lives in pkg/config, not in the root package: point
-	// the root entry's config extraction there.
-	s := spec(*root)
-	generated, err := llmdoc.Generate(withBaseConfigDir(s, filepath.Join(*root, "pkg", "config")))
+	generated, err := llmdoc.Generate(spec(*root))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -152,16 +151,4 @@ func docs(args []string) int {
 	}
 	fmt.Printf("wrote %s (%d bytes)\n", *out, len(generated))
 	return 0
-}
-
-// withBaseConfigDir splits the root entry so its API comes from the root
-// package and its env vars from pkg/config.Base.
-func withBaseConfigDir(s llmdoc.Spec, configDir string) llmdoc.Spec {
-	rootPkg := s.Packages[0]
-	rootAPI := rootPkg
-	rootAPI.Config = ""
-	rootCfg := llmdoc.Package{Title: "gox (root)", ImportPath: rootPkg.ImportPath, Dir: configDir, Config: "Base", ConfigOnly: true}
-	pkgs := append([]llmdoc.Package{rootAPI, rootCfg}, s.Packages[1:]...)
-	s.Packages = pkgs
-	return s
 }

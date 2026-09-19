@@ -259,12 +259,12 @@ func nameVariable(prefix string, err error) error {
 	if m == nil {
 		return err
 	}
-	return fmt.Errorf("%s is required: %w", EnvName(prefix, snakeUpper(m[1])), err)
+	return fmt.Errorf("%s is required: %w", EnvName(prefix, EnvKey(m[1])), err)
 }
 
-// snakeUpper converts a Go field name to the env-var segment conf derives
-// from it: MaxConns -> MAX_CONNS, DatabaseURL -> DATABASE_URL, URL -> URL.
-func snakeUpper(name string) string {
+// EnvKey derives the environment key segment conf uses for a Go field name:
+// HTTPClient -> HTTP_CLIENT, MaxConns -> MAX_CONNS, Otel -> OTEL.
+func EnvKey(name string) string {
 	runes := []rune(name)
 	var sb strings.Builder
 	for i, r := range runes {
