@@ -22,7 +22,6 @@ const maxCookieValue = 3800
 const (
 	keyToken = "_token"
 	keyCSRF  = "_csrf"
-	keyFlash = "_flash"
 )
 
 // codec seals session values with AES-256-GCM under a key derived from the
@@ -83,6 +82,9 @@ func (c *codec) decode(value string) (map[string]string, error) {
 	}
 	return values, nil
 }
+
+// loginPath is where RequireSession sends anonymous browsers.
+const loginPath = "/login"
 
 // Session is the per-request, cookie-backed session. Changes are written
 // to the cookie when the response starts.
@@ -250,7 +252,7 @@ func (f *feature) secureCookie(r *http.Request) bool {
 }
 
 // RequireSession wraps a handler so requests without a session token are
-// redirected to the login path (WithLoginPath, default /login). HTMX
+// redirected to /login. HTMX
 // requests get an HX-Redirect instead.
 func RequireSession(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -259,8 +261,7 @@ func RequireSession(next http.HandlerFunc) http.HandlerFunc {
 			panic("gox: web.RequireSession used but web.WithSessions() was not passed to web.Enable")
 		}
 		if !s.IsAuthenticated() {
-			f := featureFrom(r)
-			Redirect(w, r, f.loginPath)
+			Redirect(w, r, loginPath)
 			return
 		}
 		next(w, r)

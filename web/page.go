@@ -52,7 +52,7 @@ func PageFrom(r *http.Request) *Page {
 		f := featureFrom(r)
 		w, _ := r.Context().Value(writerKey{}).(http.ResponseWriter)
 		p := &Page{Path: r.URL.Path, Data: map[string]any{}, Request: r, assets: f.assets, Nonce: nonce()}
-		p.Flashes = f.takeFlashes(w, r)
+		p.Flashes = takeFlashes(w, r)
 		if s, ok := r.Context().Value(sessionKey{}).(*Session); ok {
 			p.CSRFToken = csrfToken(s)
 			if f.resolveUser != nil {
