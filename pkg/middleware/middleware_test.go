@@ -400,11 +400,11 @@ func TestRouteSurvivesRequestCopiesMadeByInnerMiddleware(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /items/{id}", ok)
 	// Timeout derives a new request; the mux sets the pattern on that copy.
-	serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mux.ServeHTTP(w, r)
-		middleware.SetRoute(r.Context(), r.Pattern)
-	})
-	h := middleware.Chain(middleware.RouteCapture(), middleware.Logging(logger), middleware.Timeout(time.Second))(serve)
+	resolve := func(r *http.Request) string {
+		_, pattern := mux.Handler(r)
+		return pattern
+	}
+	h := middleware.Chain(middleware.RouteCapture(resolve), middleware.Logging(logger), middleware.Timeout(time.Second))(mux)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/items/1", nil))
 
 	if !strings.Contains(buf.String(), `"route":"GET /items/{id}"`) {
@@ -475,7 +475,7 @@ func TestRouteCaptureCanResolveTheRouteBeforeTheMuxRuns(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 		})
 	}
-	h := middleware.Chain(middleware.RouteCapture(middleware.WithRouteResolver(resolve)), reject)(mux)
+	h := middleware.Chain(middleware.RouteCapture(resolve), reject)(mux)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/items", nil))
 	if seen != "POST /api/items" {
 		t.Fatalf("Route before the mux = %q", seen)

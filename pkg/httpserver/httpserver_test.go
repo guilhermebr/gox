@@ -197,7 +197,11 @@ func TestHandlerPublishesTheMatchedRoute(t *testing.T) {
 			got = middleware.Route(r)
 		})
 	}
-	middleware.Chain(middleware.RouteCapture(), probe, middleware.Timeout(time.Second))(httpserver.Handler(mux)).
+	resolve := func(r *http.Request) string {
+		_, pattern := mux.Handler(r)
+		return pattern
+	}
+	middleware.Chain(middleware.RouteCapture(resolve), probe, middleware.Timeout(time.Second))(httpserver.Handler(mux)).
 		ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/items/3", nil))
 	if got != "GET /items/{id}" {
 		t.Fatalf("Route = %q", got)

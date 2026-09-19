@@ -29,8 +29,8 @@ better than any router.
   (`not_found`) or 405 (`unimplemented`, with `Allow`) as JSON.
 - The mux sets the matched pattern on the request it receives. Middleware
   such as `Timeout` and otelhttp hand the mux a derived request, so the
-  pattern is published outward through a small atomic holder placed in the
-  context by `RouteCapture` and filled by `httpserver.Handler`. Logging,
+  pattern is resolved from the mux by `RouteCapture` at the top of the chain
+  and stored in the context before any request copy is made. Logging,
   metrics and span names read the pattern from there.
 - Timeout is real cancellation: the response is buffered and the handler's
   context is canceled at the deadline; the client gets a 504 envelope.

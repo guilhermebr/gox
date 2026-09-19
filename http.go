@@ -62,10 +62,10 @@ func HTTP(opts ...HTTPOption) Option {
 			mux := httpserver.NewMux()
 			chain := []Middleware{
 				withErrorRenderers(b.renderers),
-				middleware.RouteCapture(middleware.WithRouteResolver(func(r *http.Request) string {
+				middleware.RouteCapture(func(r *http.Request) string {
 					_, pattern := mux.Handler(r)
 					return pattern
-				})),
+				}),
 				middleware.Recovery(a.log),
 				middleware.RequestID(),
 				middleware.Tracing(a.otel.Tracer, a.otel.Propagator),
