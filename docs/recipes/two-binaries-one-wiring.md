@@ -1,4 +1,4 @@
-# Two binaries, one wiring package (API and workers)
+# API and workers from one codebase
 
 ```go path=internal/app/app.go
 package app
@@ -13,10 +13,12 @@ import (
 	"github.com/guilhermebr/gox/postgres"
 )
 
-// Config is shared by every binary.
+// Config is shared by every binary. Role only matters to the single-binary
+// main at the end of this recipe; the api and worker binaries ignore it.
 type Config struct {
 	gox.BaseConfig
 	SyncEvery time.Duration `conf:"default:5m"`
+	Role      string        `conf:"default:all,help:all | api | worker"`
 }
 
 // Base is what every binary of the service is made of.
@@ -83,6 +85,43 @@ func main() {
 	// Same prefix (BILLING_*), same Postgres section, no HTTP server; the
 	// admin server still serves /readyz and /metrics for this binary.
 	a := gox.MustNew("billing", append(app.Base(&cfg), app.Sync(&cfg))...)
+	if err := a.Run(); err != nil {
+		os.Exit(1)
+	}
+}
+```
+
+One binary that picks its role from the environment uses the same wiring:
+`gox.LoadConfig` reads the struct `New` will load, so the role can decide the
+option list before the app exists.
+
+```go path=cmd/shop/main.go
+package main
+
+import (
+	"os"
+
+	"github.com/guilhermebr/gox"
+
+	"example.com/shop/internal/app"
+)
+
+func main() {
+	var cfg app.Config
+	if err := gox.LoadConfig("billing", &cfg); err != nil {
+		os.Exit(1)
+	}
+	opts := app.Base(&cfg)
+	if cfg.Role == "all" || cfg.Role == "api" {
+		opts = append(opts, gox.HTTP())
+	}
+	if cfg.Role == "all" || cfg.Role == "worker" {
+		opts = append(opts, app.Sync(&cfg))
+	}
+	a := gox.MustNew("billing", opts...)
+	if a.HasHTTP() {
+		app.Routes(a)
+	}
 	if err := a.Run(); err != nil {
 		os.Exit(1)
 	}

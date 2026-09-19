@@ -1,4 +1,4 @@
-# Add a custom component (anything with Start and Stop)
+# Add a component (a worker, a listener, anything with Start and Stop)
 
 ```go path=main.go
 package main
@@ -13,7 +13,10 @@ import (
 )
 
 // tcpEcho owns a listener: bound in Start (so a busy port fails the boot),
-// served in Run, closed in Stop.
+// served in Run, closed in Stop. A Component has Name, Start and Stop; a
+// Runner adds Run, which gox starts in its own goroutine, cancels on
+// shutdown, and treats a non-nil return as fatal. Add a Ready method to
+// take part in /readyz.
 type tcpEcho struct {
 	addr string
 	ln   net.Listener
@@ -51,8 +54,10 @@ func (e *tcpEcho) Run(ctx context.Context) error {
 func (e *tcpEcho) Stop(context.Context) error { return e.ln.Close() }
 
 func main() {
+	// gox.Component registers at StageUser: after datastores, before the
+	// HTTP server, stopped in reverse. a.Add(c) does the same after New.
 	a := gox.MustNew("echo",
-		gox.Component(&tcpEcho{addr: ":7"}), // registered at StageUser
+		gox.Component(&tcpEcho{addr: ":7"}),
 	)
 	if err := a.Run(); err != nil {
 		os.Exit(1)
