@@ -9,6 +9,7 @@ its own SDK; never another feature or provider.
 | module | what it wraps |
 |---|---|
 | `github.com/guilhermebr/gox/providers/supabase` | the Supabase client |
+| `github.com/guilhermebr/gox/providers/workos` | WorkOS: API client, AuthKit login, session cookie with refresh, bearer tokens, organization switch, webhooks |
 
 Add a provider with `mkdir providers/<name>` and a module named
 `github.com/guilhermebr/gox/providers/<name>`; `docs/features.md` walks

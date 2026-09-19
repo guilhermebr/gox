@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
@@ -454,6 +454,42 @@ func NewFromConfig(cfg Config) (*supabase.Client, error)  // NewFromConfig creat
 
 <PREFIX>_SUPABASE_URL (string, required): project URL such as https://xyz.supabase.co
 <PREFIX>_SUPABASE_KEY (string, required, secret): anon or service role key
+
+## API: workos
+
+import "github.com/guilhermebr/gox/providers/workos"
+
+```go
+type Config struct{ APIKey string; ClientID string; RedirectURI string; CookiePassword string; CookieName string; CookieMaxAge time.Duration; SecureCookies string; BaseURL string; Issuer string; WebhookSecret string }  // Config is the WORKOS config section: BILLING_WORKOS_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+type Option func(*options)  // Option configures Enable.
+func WithSessionCodec(c SessionCodec) Option  // WithSessionCodec replaces how the session cookie is sealed, for services that share the cookie with an application using another WorkOS SDK.
+func WithSessions() Option  // WithSessions authenticates every request: the sealed session cookie, or a bearer access token when the Authorization header carries one.
+type Session struct{ ID string; UserID string; OrganizationID string; Role string; Permissions []string; Entitlements []string; User *sdk.User; Impersonator *sdk.AuthenticateResponseImpersonator }  // Session is the authenticated caller of a request.
+func SessionFrom(r *http.Request) (*Session, bool)  // SessionFrom returns the request's session; ok is false for anonymous requests.
+type SessionCodec interface { Seal(data *sdk.SessionData, password string) (string, error) Unseal(sealed, password string) (*sdk.SessionData, error) }  // SessionCodec seals and unseals the session cookie value.
+func Callback(a *gox.App) http.HandlerFunc  // Callback returns the handler for the redirect URI: it checks the state, exchanges the code, writes the session cookie and redirects to the path Login remembered (or "/").
+func Enable(opts ...Option) gox.Option  // Enable registers the WORKOS config section and builds the API client.
+func From(a *gox.App) *sdk.Client  // From returns the WorkOS API client.
+func Login(a *gox.App) http.HandlerFunc  // Login returns the handler that starts an AuthKit sign-in: it redirects to the hosted login and remembers ?return_to= (local paths only) for Callback.
+func Logout(a *gox.App) http.HandlerFunc  // Logout returns the handler that clears the session cookie and redirects to the WorkOS logout URL, which ends the session there and returns to ?return_to= when the application configured it as a logout redirect.
+func RequireSession(next http.HandlerFunc) http.HandlerFunc  // RequireSession wraps a handler so anonymous requests get a 401.
+func SwitchOrganization(w http.ResponseWriter, r *http.Request, organizationID string) error  // SwitchOrganization re-grants the request's session into another organization the user belongs to and rotates the cookie.
+func VerifyWebhook(a *gox.App, r *http.Request) (*sdk.EventSchema, error)  // VerifyWebhook reads the request body, checks the WorkOS-Signature header against WORKOS_WEBHOOK_SECRET and returns the event.
+```
+
+## Config: workos (declared by workos.Enable())
+
+<PREFIX>_WORKOS_API_KEY (string, required, secret): WorkOS API key (sk_...)
+<PREFIX>_WORKOS_CLIENT_ID (string, required): WorkOS client id (client_...)
+<PREFIX>_WORKOS_REDIRECT_URI (string): absolute URL of the route serving workos.Callback; required by workos.Login
+<PREFIX>_WORKOS_COOKIE_PASSWORD (string, secret): key that seals the session cookie; at least 32 bytes; required by WithSessions
+<PREFIX>_WORKOS_COOKIE_NAME (string, default wos_session)
+<PREFIX>_WORKOS_COOKIE_MAX_AGE (duration, default 720h)
+<PREFIX>_WORKOS_SECURE_COOKIES (string, default auto): auto | true | false; auto is on in production or behind X-Forwarded-Proto https
+<PREFIX>_WORKOS_BASE_URL (string): API base URL; leave empty for api.workos.com (set it for an emulator)
+<PREFIX>_WORKOS_ISSUER (string, default https://api.workos.com/): trusted access-token issuer; change it for a custom auth domain or an emulator
+<PREFIX>_WORKOS_WEBHOOK_SECRET (string, secret): signing secret of the webhook endpoint; required by workos.VerifyWebhook
 
 ## API: web
 
