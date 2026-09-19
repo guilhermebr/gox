@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
@@ -441,6 +441,15 @@ func Enable(opts ...Option) gox.Option  // Enable registers the JWT config secti
 <PREFIX>_JWT_PRIVATE_KEY (string, secret): PEM RSA private key for RS256 signing; omit on verify-only services
 <PREFIX>_JWT_ISSUER (string, default gox)
 <PREFIX>_JWT_EXPIRY (duration, default 24h)
+
+## API: openapi
+
+import "github.com/guilhermebr/gox/openapi"
+
+```go
+type Violation struct{ Code string; Message string; Pointer string }  // Violation is one way a request breaks the contract.
+func Enable(documents ...[]byte) gox.Option  // Enable validates every request that one of the documents describes: path, query, header and cookie parameters and the request body.
+```
 
 ## API: supabase
 

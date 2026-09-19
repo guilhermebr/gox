@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
