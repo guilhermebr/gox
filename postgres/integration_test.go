@@ -7,6 +7,7 @@ import (
 	"embed"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -192,5 +193,34 @@ func TestIntegrationMigrationsTableCanBeRenamed(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Settings are what triggers and row-level security read with
+// current_setting(): they must be set on the transaction's own connection
+// and vanish with it.
+func TestIntegrationTxWithSetsLocalSettings(t *testing.T) {
+	url := databaseURL(t)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	var actor, tenant string
+	err = postgres.TxWith(ctx, pool, map[string]string{"app.actor": "user_01", "app.tenant": "org'9"}, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT current_setting('app.actor'), current_setting('app.tenant')").Scan(&actor, &tenant)
+	})
+	if err != nil || actor != "user_01" || tenant != "org'9" {
+		t.Fatalf("inside = %q %q %v", actor, tenant, err)
+	}
+	var after string
+	if err := pool.QueryRow(ctx, "SELECT coalesce(current_setting('app.actor', true), '')").Scan(&after); err != nil || after != "" {
+		t.Fatalf("the setting must not outlive the transaction: %q %v", after, err)
+	}
+	err = postgres.TxWith(ctx, pool, map[string]string{"not a valid name": "x"}, func(pgx.Tx) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "not a valid name") {
+		t.Fatalf("a bad setting name: %v", err)
 	}
 }

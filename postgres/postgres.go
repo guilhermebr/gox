@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -169,3 +170,27 @@ func Tx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (err 
 	}
 	return nil
 }
+
+// TxWith is Tx with settings applied to the transaction first (SET LOCAL
+// semantics): values that triggers, row-level security policies and
+// functions read with current_setting(), such as the acting user for an
+// audit trigger or the tenant for a policy. They exist only inside this
+// transaction, on its connection, so nothing leaks through the pool. Names
+// are "namespace.key"; values are passed as parameters.
+func TxWith(ctx context.Context, pool *pgxpool.Pool, settings map[string]string, fn func(tx pgx.Tx) error) error {
+	for name := range settings {
+		if !settingName.MatchString(name) {
+			return fmt.Errorf("postgres: setting %q must look like namespace.key", name)
+		}
+	}
+	return Tx(ctx, pool, func(tx pgx.Tx) error {
+		for name, value := range settings {
+			if _, err := tx.Exec(ctx, "SELECT set_config($1, $2, true)", name, value); err != nil {
+				return fmt.Errorf("postgres: set %s: %w", name, err)
+			}
+		}
+		return fn(tx)
+	})
+}
+
+var settingName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_.]*$`)
