@@ -9,6 +9,7 @@ use (
 	./openapi
 	./osrelease
 	./postgres
+	./providers/mailgun
 	./providers/s3
 	./providers/supabase
 	./providers/temporal
