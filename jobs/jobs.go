@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,6 +28,23 @@ type feature struct {
 	cfg     *Config
 	workers *river.Workers
 	client  *river.Client[pgx.Tx]
+	log     *slog.Logger
+
+	mu         sync.Mutex
+	registered int
+}
+
+func (f *feature) add(fn func(*river.Workers)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fn(f.workers)
+	f.registered++
+}
+
+func (f *feature) hasWorkers() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.registered > 0
 }
 
 // Enable declares the job queue on the pool that pool returns; pass
@@ -49,9 +67,10 @@ func Enable(pool func(*gox.App) *pgxpool.Pool) gox.Option {
 			if p == nil {
 				return nil, fmt.Errorf("jobs: Enable got a nil pool; pass postgres.From and add postgres.Enable() to gox.New")
 			}
+			f.log = a.Log().With(slog.String("component", "jobs"))
 			rc := &river.Config{
 				Workers:      f.workers,
-				Logger:       a.Log().With(slog.String("component", "jobs")),
+				Logger:       f.log,
 				ErrorHandler: &errorLogger{log: a.Log()},
 			}
 			if cfg.Work {
@@ -80,7 +99,8 @@ func From(a *gox.App) *river.Client[pgx.Tx] {
 // Register adds the worker for one kind of job. Call it after New and
 // before Run; a kind registered twice panics.
 func Register[T river.JobArgs](a *gox.App, w river.Worker[T]) {
-	river.AddWorker(gox.MustValue[*feature](a, featureKey{}, "jobs.Register", "jobs.Enable()").workers, w)
+	gox.MustValue[*feature](a, featureKey{}, "jobs.Register", "jobs.Enable()").
+		add(func(workers *river.Workers) { river.AddWorker(workers, w) })
 }
 
 // Schedule enqueues args on a schedule: a cron expression ("0 3 * * *",
@@ -114,7 +134,13 @@ func (c *component) Start(ctx context.Context) error {
 			return fmt.Errorf("jobs: migrate: %w", err)
 		}
 	}
-	if !c.f.cfg.Work {
+	// A service with no worker registered yet (jobs enabled before the first
+	// one is written, or a process that only inserts) still boots and
+	// enqueues; River refuses to start a worker loop with an empty bundle.
+	if !c.f.cfg.Work || !c.f.hasWorkers() {
+		if c.f.cfg.Work {
+			c.f.log.WarnContext(ctx, "no job workers registered: this process only inserts jobs")
+		}
 		return nil
 	}
 	// Jobs outlive the start-up context; Stop ends them.

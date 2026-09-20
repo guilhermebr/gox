@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -84,7 +85,12 @@ func run(t *testing.T, p *pgxpool.Pool, register func(a *gox.App)) *gox.App {
 	done := make(chan error, 1)
 	go func() { done <- a.RunContext(ctx) }()
 	for !a.Health().IsReady() {
-		time.Sleep(5 * time.Millisecond)
+		select {
+		case err := <-done: // a failed start must fail the test, not hang it
+			t.Fatalf("RunContext: %v", err)
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 	t.Cleanup(func() {
 		cancel()
@@ -177,5 +183,21 @@ func TestAnInsertOnlyProcessDoesNotWork(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if len(g.seen()) != 0 {
 		t.Fatal("JOBS_WORK=false must only insert")
+	}
+}
+
+// Enabling jobs before the first worker exists must not stop the service
+// from booting. River still refuses to enqueue a kind no worker is
+// registered for, so every process registers its workers and an
+// insert-only one sets JOBS_WORK=false.
+func TestNoRegisteredWorkersStillBoots(t *testing.T) {
+	p := pool(t)
+	a := run(t, p, func(*gox.App) {})
+	if !a.Health().IsReady() {
+		t.Fatal("the app must be ready")
+	}
+	_, err := jobs.From(a).Insert(context.Background(), greet{Name: "queued"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "greet") {
+		t.Fatalf("Insert of an unregistered kind = %v", err)
 	}
 }

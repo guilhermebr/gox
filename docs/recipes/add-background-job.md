@@ -81,5 +81,9 @@ func main() {
 }
 ```
 
+Every process registers the same workers, whether it works jobs or only
+inserts them: a kind nobody registered cannot be enqueued. A process with no
+worker at all still boots, and says so in its log.
+
 `jobs.From(a)` is the River client; everything River offers (unique jobs,
 priorities, per-job timeouts, the River UI) works as documented upstream.
