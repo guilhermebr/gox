@@ -10,7 +10,9 @@ use (
 	./osrelease
 	./postgres
 	./providers/mailgun
+	./providers/posthog
 	./providers/s3
+	./providers/stripe
 	./providers/supabase
 	./providers/temporal
 	./providers/workos
