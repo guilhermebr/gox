@@ -20,6 +20,17 @@ func TestClientIPComesFromTrustedProxiesAndReachesTheAccessLog(t *testing.T) {
 	}
 }
 
+func TestRequestIDIsTheOneEchoedToTheClient(t *testing.T) {
+	base, stop := runHTTP(t, func(a *gox.App) {
+		a.HandleFunc("GET /id", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(gox.RequestID(r))) })
+	}, nil)
+	defer stop()
+	resp, body := do(t, http.MethodGet, base+"/id", nil, "X-Request-ID", "req-42")
+	if string(body) != "req-42" || resp.Header.Get("X-Request-ID") != "req-42" {
+		t.Fatalf("handler saw %q, client got %q", body, resp.Header.Get("X-Request-ID"))
+	}
+}
+
 func TestABadTrustedProxyListFailsAtStartup(t *testing.T) {
 	setArgs(t)
 	t.Setenv("BILLING_HTTP_TRUSTED_PROXIES", "everything")

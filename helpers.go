@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/guilhermebr/gox/pkg/httpx"
+	"github.com/guilhermebr/gox/pkg/log"
 	"github.com/guilhermebr/gox/pkg/middleware"
 )
 
@@ -33,6 +34,10 @@ func Decode(r *http.Request, v any) error {
 // limits, audit trails and abuse reports, never r.RemoteAddr or a raw
 // X-Forwarded-For.
 func ClientIP(r *http.Request) string { return middleware.ClientIPFrom(r) }
+
+// RequestID returns the id of this request: the one echoed in X-Request-ID
+// and stamped on every log line. Use it to correlate rows the handler writes.
+func RequestID(r *http.Request) string { return log.RequestID(r.Context()) }
 
 // RateLimit allows limit requests per window for each client IP and answers
 // the rest with a 429 and Retry-After. Wrap the routes that need it (login,
