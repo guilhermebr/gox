@@ -32,5 +32,5 @@ Never:
 - Never read env vars directly; add fields to your config struct (`gox.WithConfig`).
 - Never start goroutines that outlive a request outside a component or `gox.Periodic`; they would not be stopped on shutdown.
 - Never mutate the shared HTTP client; derive one per request (`web.APIFrom`, `httpclient.WithBearer`).
-- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need. The one exception is `pkg/storage`: its `Bucket`, option types and upload tokens are the storage API every storage provider shares.
+- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need. The exceptions are the provider-neutral APIs: `pkg/storage` (`Bucket`, option types, upload tokens) and `pkg/mail` (`Message`, `Sender`, `SMTP`, `Restrict`, `Recorder`), which every storage or mail provider shares.
 - Never put datastore settings in `BaseConfig`; they are feature sections (`<PREFIX>_POSTGRES_URL`).

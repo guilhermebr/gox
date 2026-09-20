@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/s3`, `gox/providers/supabase`, `gox/providers/temporal`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/mailgun`, `gox/providers/s3`, `gox/providers/supabase`, `gox/providers/temporal`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
@@ -473,6 +473,47 @@ type Violation struct{ Code string; Message string; Pointer string }  // Violati
 func Enable(documents ...[]byte) gox.Option  // Enable validates every request that one of the documents describes: path, query, header and cookie parameters and the request body.
 ```
 
+## API: mail (the Message, Sender, SMTP, Restrict and Recorder)
+
+import "github.com/guilhermebr/gox/pkg/mail"
+
+```go
+var ErrRecipientNotAllowed error  // ErrRecipientNotAllowed is returned by a restricted Sender.
+type Attachment struct{ Filename string; ContentType string; Data []byte }  // Attachment is a file sent with a Message.
+type Message struct{ From string; To []string; Cc []string; Bcc []string; ReplyTo string; Subject string; Text string; HTML string; Headers map[string]string; Tags []string; Attachments []Attachment }  // Message is one email.
+func (m Message) Recipients() []string  // Recipients lists To, Cc and Bcc together: everyone the message reaches.
+func (m Message) Validate() error  // Validate checks that the message can be sent and that every address parses.
+type Recorder struct{ /* unexported */ }  // Recorder is a Sender for tests: it keeps what was sent.
+func (r *Recorder) Messages() []Message  // Messages returns what was sent so far.
+func (r *Recorder) Send(_ context.Context, m Message) (string, error)  // Send records m after validating it, like a real sender would.
+type Sender interface { Send(ctx context.Context, m Message) (id string, err error) }  // Sender delivers messages.
+func Restrict(next Sender, domains ...string) Sender  // Restrict wraps next so a message is refused unless every recipient is at one of the domains.
+func SMTP(addr, username, password string) Sender  // SMTP returns a Sender for an SMTP server at addr ("localhost:1025"): a development mail catcher or a self-hosted relay.
+```
+
+## API: mailgun
+
+import "github.com/guilhermebr/gox/providers/mailgun"
+
+```go
+type Config struct{ APIKey string; Domain string; BaseURL string; WebhookSigningKey string }  // Config is the MAILGUN config section: BILLING_MAILGUN_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+type Event struct{ ID string; Type string; Severity string; Recipient string; MessageID string; Time time.Time; Raw json.RawMessage }  // Event is a delivery event Mailgun posts to a webhook.
+func VerifyWebhook(a *gox.App, r *http.Request) (*Event, error)  // VerifyWebhook reads a delivery-event webhook, checks its signature with MAILGUN_WEBHOOK_SIGNING_KEY and returns the event.
+type Inbound struct{ Sender string; Recipient string; From string; Subject string; Text string; StrippedText string; HTML string; MessageID string; InReplyTo string; MIME string; Attachments []mail.Attachment }  // Inbound is a message Mailgun received and forwarded through a route.
+func ParseInbound(a *gox.App, r *http.Request) (*Inbound, error)  // ParseInbound reads a message forwarded by a Mailgun route (a multipart or urlencoded form), checks its signature and returns it.
+func Enable() gox.Option  // Enable registers the MAILGUN config section and builds the API client.
+func From(a *gox.App) *sdk.Client  // From returns the Mailgun API client.
+func Sender(a *gox.App) mail.Sender  // Sender returns the mail.Sender that delivers through the API.
+```
+
+## Config: mailgun (declared by mailgun.Enable())
+
+<PREFIX>_MAILGUN_API_KEY (string, required, secret): sending API key
+<PREFIX>_MAILGUN_DOMAIN (string, required): sending domain such as mg.example.com
+<PREFIX>_MAILGUN_BASE_URL (string): API base without a version; empty for the US region and https://api.eu.mailgun.net for the EU
+<PREFIX>_MAILGUN_WEBHOOK_SIGNING_KEY (string, secret): HTTP webhook signing key; required by VerifyWebhook and ParseInbound
+
 ## API: storage (the Bucket interface and upload tokens)
 
 import "github.com/guilhermebr/gox/pkg/storage"
@@ -687,6 +728,6 @@ Never:
 - Never read env vars directly; add fields to your config struct (`gox.WithConfig`).
 - Never start goroutines that outlive a request outside a component or `gox.Periodic`; they would not be stopped on shutdown.
 - Never mutate the shared HTTP client; derive one per request (`web.APIFrom`, `httpclient.WithBearer`).
-- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need. The one exception is `pkg/storage`: its `Bucket`, option types and upload tokens are the storage API every storage provider shares.
+- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need. The exceptions are the provider-neutral APIs: `pkg/storage` (`Bucket`, option types, upload tokens) and `pkg/mail` (`Message`, `Sender`, `SMTP`, `Restrict`, `Recorder`), which every storage or mail provider shares.
 - Never put datastore settings in `BaseConfig`; they are feature sections (`<PREFIX>_POSTGRES_URL`).
 
