@@ -9,6 +9,7 @@ use (
 	./openapi
 	./osrelease
 	./postgres
+	./providers/s3
 	./providers/supabase
 	./providers/temporal
 	./providers/workos

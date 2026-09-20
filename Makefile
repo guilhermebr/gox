@@ -76,12 +76,12 @@ check-recipes:
 
 ## check-deps: prove the import-as-opt-in rule on the example binaries
 check-deps:
-	@scripts/check-deps.sh examples/minimal absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5 github.com/a-h/templ
-	@scripts/check-deps.sh examples/http absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5 github.com/a-h/templ
+	@scripts/check-deps.sh examples/minimal absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/aws/aws-sdk-go-v2 github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5 github.com/a-h/templ
+	@scripts/check-deps.sh examples/http absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/aws/aws-sdk-go-v2 github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5 github.com/a-h/templ
 	@scripts/check-deps.sh examples/postgres present github.com/jackc/pgx/v5
-	@scripts/check-deps.sh examples/postgres absent github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5 github.com/a-h/templ
+	@scripts/check-deps.sh examples/postgres absent github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/aws/aws-sdk-go-v2 github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5 github.com/a-h/templ
 	@scripts/check-deps.sh examples/web present github.com/a-h/templ
-	@scripts/check-deps.sh examples/web absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5
+	@scripts/check-deps.sh examples/web absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/aws/aws-sdk-go-v2 github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5
 
 ## check-lint-rules: prove the depguard dependency rules fire on a planted violation
 check-lint-rules:

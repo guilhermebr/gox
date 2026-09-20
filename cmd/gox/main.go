@@ -118,6 +118,8 @@ func spec(root string) llmdoc.Spec {
 			{Title: "jobs", ImportPath: "github.com/guilhermebr/gox/jobs", Dir: filepath.Join(root, "jobs"), Config: "Config", Section: "JOBS", DeclaredBy: "jobs.Enable()"},
 			{Title: "jwt", ImportPath: "github.com/guilhermebr/gox/jwt", Dir: filepath.Join(root, "jwt"), Config: "Config", Section: "JWT", DeclaredBy: "jwt.Enable()"},
 			{Title: "openapi", ImportPath: "github.com/guilhermebr/gox/openapi", Dir: filepath.Join(root, "openapi")},
+			{Title: "storage (the Bucket interface and upload tokens)", ImportPath: "github.com/guilhermebr/gox/pkg/storage", Dir: filepath.Join(root, "pkg", "storage")},
+			{Title: "s3", ImportPath: "github.com/guilhermebr/gox/providers/s3", Dir: filepath.Join(root, "providers", "s3"), Config: "Config", Section: "S3", DeclaredBy: "s3.Enable()"},
 			{Title: "supabase", ImportPath: "github.com/guilhermebr/gox/providers/supabase", Dir: filepath.Join(root, "providers", "supabase"), Config: "Config", Section: "SUPABASE", DeclaredBy: "supabase.Enable()"},
 			{Title: "temporal", ImportPath: "github.com/guilhermebr/gox/providers/temporal", Dir: filepath.Join(root, "providers", "temporal"), Config: "Config", Section: "TEMPORAL", DeclaredBy: "temporal.Enable()"},
 			{Title: "workos", ImportPath: "github.com/guilhermebr/gox/providers/workos", Dir: filepath.Join(root, "providers", "workos"), Config: "Config", Section: "WORKOS", DeclaredBy: "workos.Enable()"},
