@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/temporal`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/s3`, `gox/providers/supabase`, `gox/providers/temporal`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
@@ -473,6 +473,46 @@ type Violation struct{ Code string; Message string; Pointer string }  // Violati
 func Enable(documents ...[]byte) gox.Option  // Enable validates every request that one of the documents describes: path, query, header and cookie parameters and the request body.
 ```
 
+## API: storage (the Bucket interface and upload tokens)
+
+import "github.com/guilhermebr/gox/pkg/storage"
+
+```go
+var ErrInvalidToken, ErrExpiredToken error  // Token errors, usable with errors.Is.
+var ErrNotFound error  // ErrNotFound is returned by Get, Stat and Delete for a key that does not exist.
+type Bucket interface { // Put stores r under key. size is the byte length, or -1 when unknown. Put(ctx context.Context, key string, r io.Reader, size int64, opts PutOptions) error // Get opens the object; the caller closes it. Get(ctx context.Context, key string) (io.ReadCloser, Info, error) // Stat describes the object without reading it. Stat(ctx context.Context, key string) (Info, error) // Delete removes the object. Delete(ctx context.Context, key string) error // PresignPut returns a URL a client can PUT the object to, and the headers // it must send with it. The constraints in opts are part of the signature: // an upload with another type, checksum or length is refused by the store. PresignPut(ctx context.Context, key string, opts PresignPutOptions) (url string, headers http.Header, err error) // PresignGet returns a URL a client can GET the object from until it expires. PresignGet(ctx context.Context, key string, opts PresignGetOptions) (url string, err error) }  // Bucket is one object store.
+type Info struct{ Key string; Size int64; ContentType string; ETag string; LastModified time.Time }  // Info describes a stored object.
+type PresignGetOptions struct{ Filename string; Inline bool; ContentType string; Expires time.Duration }  // PresignGetOptions shapes a download link.
+type PresignPutOptions struct{ ContentType string; ContentMD5 string; ContentLength int64; Expires time.Duration }  // PresignPutOptions constrains a direct upload.
+type PutOptions struct{ ContentType string }  // PutOptions describes an object being written by the service.
+type Signer struct{ /* unexported */ }  // Signer issues and verifies upload tokens (HMAC-SHA256).
+func NewSigner(secret []byte) (*Signer, error)  // NewSigner needs a secret of at least 32 bytes.
+func (s *Signer) Sign(u Upload) string  // Sign returns the URL-safe token for u.
+func (s *Signer) Verify(token string) (Upload, error)  // Verify returns the claims of a token this Signer issued.
+type Upload struct{ Key string; Subject string; Expires time.Time; Meta map[string]string }  // Upload is what an upload token vouches for: which object a client was allowed to write, who asked, and until when the token can be redeemed.
+```
+
+## API: s3
+
+import "github.com/guilhermebr/gox/providers/s3"
+
+```go
+type Config struct{ Bucket string; Region string; Endpoint string; PathStyle string; AccessKeyID string; SecretAccessKey string; PresignExpiry time.Duration }  // Config is the S3 config section: BILLING_S3_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+func Enable() gox.Option  // Enable declares the bucket: it registers the S3 config section and a component that checks at boot that the bucket is reachable with the configured credentials (a typo fails the start, not the first upload) and keeps reporting it through /readyz.
+func From(a *gox.App) storage.Bucket  // From returns the bucket.
+```
+
+## Config: s3 (declared by s3.Enable())
+
+<PREFIX>_S3_BUCKET (string, required)
+<PREFIX>_S3_REGION (string, default us-east-1)
+<PREFIX>_S3_ENDPOINT (string): base URL of an S3-compatible server (MinIO or R2); empty for AWS
+<PREFIX>_S3_PATH_STYLE (string, default auto): auto | true | false; auto uses path-style addressing when ENDPOINT is set
+<PREFIX>_S3_ACCESS_KEY_ID (string): static credentials; leave empty for the AWS default chain (environment or instance role)
+<PREFIX>_S3_SECRET_ACCESS_KEY (string, secret)
+<PREFIX>_S3_PRESIGN_EXPIRY (duration, default 15m): lifetime of presigned URLs when a call sets none; at most 168h
+
 ## API: supabase
 
 import "github.com/guilhermebr/gox/providers/supabase"
@@ -647,6 +687,6 @@ Never:
 - Never read env vars directly; add fields to your config struct (`gox.WithConfig`).
 - Never start goroutines that outlive a request outside a component or `gox.Periodic`; they would not be stopped on shutdown.
 - Never mutate the shared HTTP client; derive one per request (`web.APIFrom`, `httpclient.WithBearer`).
-- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need.
+- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need. The one exception is `pkg/storage`: its `Bucket`, option types and upload tokens are the storage API every storage provider shares.
 - Never put datastore settings in `BaseConfig`; they are feature sections (`<PREFIX>_POSTGRES_URL`).
 
