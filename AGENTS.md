@@ -17,7 +17,7 @@ design, `docs/features.md` for how feature packages plug in, and
 
 ```
 gox.go builder.go app.go run.go http.go errors.go helpers.go   root package
-pkg/lifecycle config log errors health admin middleware httpx httpserver httpclient otel storage mail
+pkg/lifecycle config log errors health admin middleware httpx httpserver httpclient otel storage mail i18n
 postgres/ jobs/ jwt/ openapi/ web/ feature packages, one module each
 providers/<name>/                  third-party service clients (mailgun, posthog, s3, stripe, supabase, temporal, workos), one module each, same rules as features
 examples/                          runnable examples, one module

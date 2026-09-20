@@ -118,6 +118,7 @@ func spec(root string) llmdoc.Spec {
 			{Title: "jobs", ImportPath: "github.com/guilhermebr/gox/jobs", Dir: filepath.Join(root, "jobs"), Config: "Config", Section: "JOBS", DeclaredBy: "jobs.Enable()"},
 			{Title: "jwt", ImportPath: "github.com/guilhermebr/gox/jwt", Dir: filepath.Join(root, "jwt"), Config: "Config", Section: "JWT", DeclaredBy: "jwt.Enable()"},
 			{Title: "openapi", ImportPath: "github.com/guilhermebr/gox/openapi", Dir: filepath.Join(root, "openapi")},
+			{Title: "i18n (catalogs, locale matching and the locale middleware)", ImportPath: "github.com/guilhermebr/gox/pkg/i18n", Dir: filepath.Join(root, "pkg", "i18n")},
 			{Title: "mail (the Message, Sender, SMTP, Restrict and Recorder)", ImportPath: "github.com/guilhermebr/gox/pkg/mail", Dir: filepath.Join(root, "pkg", "mail")},
 			{Title: "mailgun", ImportPath: "github.com/guilhermebr/gox/providers/mailgun", Dir: filepath.Join(root, "providers", "mailgun"), Config: "Config", Section: "MAILGUN", DeclaredBy: "mailgun.Enable()"},
 			{Title: "storage (the Bucket interface and upload tokens)", ImportPath: "github.com/guilhermebr/gox/pkg/storage", Dir: filepath.Join(root, "pkg", "storage")},

@@ -60,3 +60,8 @@ func main() {
 	}
 }
 ```
+
+Audit triggers and row-level security read the acting user or tenant with
+`current_setting('app.actor')`. Set them for one transaction, on its own
+connection, with `postgres.TxWith(ctx, db, map[string]string{"app.actor": userID}, func(tx pgx.Tx) error { ... })`;
+they are gone when it ends, so nothing leaks through the pool.
