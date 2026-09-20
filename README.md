@@ -154,7 +154,7 @@ Every feature has the same shape: `Config`, `Enable(opts...) gox.Option`,
 
 Building blocks a service is made of (`postgres`, `jobs`, `jwt`, `openapi`, `web`) live at the
 top level. Clients for third-party services live under `providers/`, one
-module each (`providers/mailgun`, `providers/s3`, `providers/supabase`, `providers/temporal`, `providers/workos`; more cloud and SaaS APIs later).
+module each (`providers/mailgun`, `providers/posthog`, `providers/s3`, `providers/stripe`, `providers/supabase`, `providers/temporal`, `providers/workos`; more cloud and SaaS APIs later).
 
 ## Start a service
 

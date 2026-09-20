@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/mailgun`, `gox/providers/s3`, `gox/providers/supabase`, `gox/providers/temporal`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/mailgun`, `gox/providers/posthog`, `gox/providers/s3`, `gox/providers/stripe`, `gox/providers/supabase`, `gox/providers/temporal`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
@@ -533,6 +533,23 @@ func (s *Signer) Verify(token string) (Upload, error)  // Verify returns the cla
 type Upload struct{ Key string; Subject string; Expires time.Time; Meta map[string]string }  // Upload is what an upload token vouches for: which object a client was allowed to write, who asked, and until when the token can be redeemed.
 ```
 
+## API: posthog
+
+import "github.com/guilhermebr/gox/providers/posthog"
+
+```go
+type Config struct{ ProjectKey string; Host string; SecretKey string }  // Config is the POSTHOG config section: BILLING_POSTHOG_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+func Enable() gox.Option  // Enable registers the POSTHOG config section and a component that owns the client: events are queued and sent in batches, and Stop flushes what is still queued so a deploy does not lose them.
+func From(a *gox.App) sdk.Client  // From returns the PostHog client: Enqueue for events, and the feature flag methods.
+```
+
+## Config: posthog (declared by posthog.Enable())
+
+<PREFIX>_POSTHOG_PROJECT_KEY (string, required): project API key (phc_...); it is public and also used by the browser SDK
+<PREFIX>_POSTHOG_HOST (string, default https://us.i.posthog.com): ingestion host; https://eu.i.posthog.com for the EU or your own
+<PREFIX>_POSTHOG_SECRET_KEY (string, secret): secret key for evaluating feature flags locally; optional
+
 ## API: s3
 
 import "github.com/guilhermebr/gox/providers/s3"
@@ -553,6 +570,24 @@ func From(a *gox.App) storage.Bucket  // From returns the bucket.
 <PREFIX>_S3_ACCESS_KEY_ID (string): static credentials; leave empty for the AWS default chain (environment or instance role)
 <PREFIX>_S3_SECRET_ACCESS_KEY (string, secret)
 <PREFIX>_S3_PRESIGN_EXPIRY (duration, default 15m): lifetime of presigned URLs when a call sets none; at most 168h
+
+## API: stripe
+
+import "github.com/guilhermebr/gox/providers/stripe"
+
+```go
+type Config struct{ APIKey string; WebhookSecret string; BaseURL string }  // Config is the STRIPE config section: BILLING_STRIPE_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+func Enable() gox.Option  // Enable registers the STRIPE config section and builds the API client on the app's outbound HTTP client when gox.HTTPClient() is declared.
+func From(a *gox.App) *sdk.Client  // From returns the Stripe API client.
+func VerifyWebhook(a *gox.App, r *http.Request) (sdk.Event, error)  // VerifyWebhook reads the request body, checks the Stripe-Signature header against STRIPE_WEBHOOK_SECRET (five-minute tolerance) and returns the event.
+```
+
+## Config: stripe (declared by stripe.Enable())
+
+<PREFIX>_STRIPE_API_KEY (string, required, secret): secret or restricted API key (sk_... or rk_...)
+<PREFIX>_STRIPE_WEBHOOK_SECRET (string, secret): signing secret of the webhook endpoint (whsec_...); required by VerifyWebhook
+<PREFIX>_STRIPE_BASE_URL (string): API base URL; leave empty for api.stripe.com (set it for stripe-mock)
 
 ## API: supabase
 

@@ -46,3 +46,14 @@ first one with real behaviour beyond "build a client" is WorkOS.
   permissions, it does not enforce them.
 - A service verifying tokens from any other identity provider uses
   `gox/jwt` with `JWT_JWKS_URL`; the two do not depend on each other.
+
+## Addendum: thin providers
+
+`providers/stripe` and `providers/posthog` show the floor of what a provider
+is: a config section, the vendor's client from `From` (built on the app's
+outbound HTTP client when the SDK allows it), and the one or two things that
+belong to the service's edges. For Stripe that is webhook verification,
+accepting events from other API versions because an endpoint keeps the
+version it was created with. For PostHog it is lifecycle: the event queue is
+flushed when the app stops. Nothing of the vendor's API is re-wrapped.
+

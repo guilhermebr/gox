@@ -19,7 +19,7 @@ design, `docs/features.md` for how feature packages plug in, and
 gox.go builder.go app.go run.go http.go errors.go helpers.go   root package
 pkg/lifecycle config log errors health admin middleware httpx httpserver httpclient otel storage mail
 postgres/ jobs/ jwt/ openapi/ web/ feature packages, one module each
-providers/<name>/                  third-party service clients (mailgun, s3, supabase, temporal, workos), one module each, same rules as features
+providers/<name>/                  third-party service clients (mailgun, posthog, s3, stripe, supabase, temporal, workos), one module each, same rules as features
 examples/                          runnable examples, one module
 cmd/gox/                           CLI: `gox new` (scaffolder; template under internal/scaffold/_template) and `gox docs` (llm.txt generator)
 docs/llm/                          fragments assembled into llm.txt
