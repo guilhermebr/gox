@@ -19,6 +19,7 @@ type Session struct {
 	Role           string
 	Permissions    []string
 	Entitlements   []string
+	FeatureFlags   []string                              // WorkOS feature flags enabled for this user and organization
 	User           *sdk.User                             // display profile sealed in the cookie; nil for bearer tokens
 	Impersonator   *sdk.AuthenticateResponseImpersonator // set when a WorkOS admin impersonates the user
 }
@@ -147,29 +148,37 @@ func (f *feature) refresh(ctx context.Context, data *sdk.SessionData, organizati
 }
 
 // SwitchOrganization re-grants the request's session into another
-// organization the user belongs to and rotates the cookie. WorkOS refusing
-// the switch is a permission-denied error.
-func SwitchOrganization(w http.ResponseWriter, r *http.Request, organizationID string) error {
+// organization the user belongs to, rotates the cookie and returns the new
+// session (the one SessionFrom holds is the old one for the rest of this
+// request). WorkOS refusing the switch is a permission-denied error.
+func SwitchOrganization(w http.ResponseWriter, r *http.Request, organizationID string) (*Session, error) {
 	st := stateFrom(r, "workos.SwitchOrganization")
 	if st.session == nil || st.data == nil || st.data.RefreshToken == "" {
-		return gox.Unauthenticated("a cookie session is required to switch organization")
+		return nil, gox.Unauthenticated("a cookie session is required to switch organization")
 	}
 	fresh, err := st.f.refresh(r.Context(), st.data, organizationID)
 	if err != nil {
 		if errors.Is(err, errRevoked) {
-			return gox.PermissionDenied("organization %s is not available to this session", organizationID)
+			return nil, gox.PermissionDenied("organization %s is not available to this session", organizationID)
 		}
-		return gox.WrapError(err, gox.CodeUnavailable, "the identity provider is unavailable")
+		return nil, gox.WrapError(err, gox.CodeUnavailable, "the identity provider is unavailable")
 	}
-	return st.f.writeCookie(w, r, fresh)
+	res := st.f.authenticate(r.Context(), fresh)
+	if res == nil || !res.Authenticated {
+		return nil, gox.Unauthenticated("the re-granted session could not be verified")
+	}
+	if err := st.f.writeCookie(w, r, fresh); err != nil {
+		return nil, err
+	}
+	return sessionOf(res, fresh.AccessToken), nil
 }
 
 func sessionOf(res *sdk.AuthenticateSessionResult, accessToken string) *Session {
 	s := &Session{
 		ID: res.SessionID, OrganizationID: res.OrganizationID, Role: res.Role,
 		Permissions: res.Permissions, Entitlements: res.Entitlements, User: res.User, Impersonator: res.Impersonator,
-		UserID: subject(accessToken),
 	}
+	s.UserID, s.FeatureFlags = tokenClaims(accessToken)
 	if s.UserID == "" && res.User != nil {
 		s.UserID = res.User.ID
 	}

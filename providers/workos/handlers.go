@@ -80,20 +80,34 @@ func Callback(a *gox.App) http.HandlerFunc {
 // to the WorkOS logout URL, which ends the session there and returns to
 // ?return_to= when the application configured it as a logout redirect.
 func Logout(a *gox.App) http.HandlerFunc {
-	f := featureOf(a, "workos.Logout")
+	featureOf(a, "workos.Logout")
 	return func(w http.ResponseWriter, r *http.Request) {
-		target := "/"
-		if st, ok := r.Context().Value(sessionKey{}).(*state); ok && st.data != nil {
-			if sealed, err := sdk.SealSession(st.data, f.sdkPassword()); err == nil {
-				s := sdk.NewSession(f.client, sealed, f.sdkPassword(), sdk.WithSessionIssuer(f.cfg.Issuer))
-				if u, err := s.GetLogoutURL(r.Context(), r.URL.Query().Get("return_to")); err == nil {
-					target = u
-				}
-			}
+		target := EndSession(w, r, r.URL.Query().Get("return_to"))
+		if target == "" {
+			target = "/"
 		}
-		f.clearCookie(w, r)
 		http.Redirect(w, r, target, http.StatusSeeOther)
 	}
+}
+
+// EndSession clears the session cookie and returns the WorkOS logout URL
+// the browser should visit to end the session there too, or "" when the
+// request carried no session. returnTo must be a logout redirect configured
+// in WorkOS. It is what a single-page app calls from a fetch handler;
+// Logout is the redirecting form of it.
+func EndSession(w http.ResponseWriter, r *http.Request, returnTo string) string {
+	st := stateFrom(r, "workos.EndSession")
+	target := ""
+	if st.data != nil {
+		if sealed, err := sdk.SealSession(st.data, st.f.sdkPassword()); err == nil {
+			s := sdk.NewSession(st.f.client, sealed, st.f.sdkPassword(), sdk.WithSessionIssuer(st.f.cfg.Issuer))
+			if u, err := s.GetLogoutURL(r.Context(), returnTo); err == nil {
+				target = u
+			}
+		}
+	}
+	st.f.clearCookie(w, r)
+	return target
 }
 
 // VerifyWebhook reads the request body, checks the WorkOS-Signature header

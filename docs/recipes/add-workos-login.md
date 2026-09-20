@@ -22,6 +22,10 @@ func main() {
 	a.HandleFunc("GET /auth/login", workos.Login(a))       // ?return_to=/invoices (local paths only)
 	a.HandleFunc("GET /auth/callback", workos.Callback(a)) // the redirect URI
 	a.HandleFunc("GET /auth/logout", workos.Logout(a))
+	// A single-page app signs out with a fetch and navigates to the URL itself.
+	a.HandleFunc("DELETE /session", func(w http.ResponseWriter, r *http.Request) {
+		_ = gox.JSON(w, http.StatusOK, map[string]string{"logoutUrl": workos.EndSession(w, r, "https://shop.example/")})
+	})
 
 	a.HandleFunc("GET /me", workos.RequireSession(func(w http.ResponseWriter, r *http.Request) {
 		s, _ := workos.SessionFrom(r)
@@ -32,11 +36,12 @@ func main() {
 
 	// Users in several organizations: re-grant the session into another one.
 	a.HandleFunc("PUT /session/organization/{id}", workos.RequireSession(func(w http.ResponseWriter, r *http.Request) {
-		if err := workos.SwitchOrganization(w, r, r.PathValue("id")); err != nil {
+		s, err := workos.SwitchOrganization(w, r, r.PathValue("id")) // the new session; the cookie is rotated
+		if err != nil {
 			gox.Error(w, r, err)
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		_ = gox.JSON(w, http.StatusOK, map[string]string{"organization": s.OrganizationID})
 	}))
 
 	// Identity events. Set SHOP_WORKOS_WEBHOOK_SECRET.

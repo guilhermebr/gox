@@ -127,7 +127,7 @@ func (f *fake) newRefreshToken() string {
 func (f *fake) accessToken(org string, ttl time.Duration) string {
 	tok := gojwt.NewWithClaims(gojwt.SigningMethodRS256, gojwt.MapClaims{
 		"iss": issuer, "sub": "user_01", "sid": "session_01", "org_id": org, "role": "admin",
-		"permissions": []string{"invoices:read"}, "exp": time.Now().Add(ttl).Unix(),
+		"permissions": []string{"invoices:read"}, "feature_flags": []string{"new-billing"}, "exp": time.Now().Add(ttl).Unix(),
 	})
 	tok.Header["kid"] = "k1"
 	s, err := tok.SignedString(f.key)
@@ -190,7 +190,7 @@ func start(t *testing.T, f *fake, register func(a *gox.App), opts ...workos.Opti
 		if s.User != nil {
 			email = s.User.Email
 		}
-		_ = gox.JSON(w, http.StatusOK, map[string]any{"user": s.UserID, "org": s.OrganizationID, "role": s.Role, "permissions": s.Permissions, "email": email, "sid": s.ID})
+		_ = gox.JSON(w, http.StatusOK, map[string]any{"user": s.UserID, "org": s.OrganizationID, "role": s.Role, "permissions": s.Permissions, "email": email, "sid": s.ID, "flags": s.FeatureFlags})
 	}))
 	a.HandleFunc("GET /public", func(w http.ResponseWriter, r *http.Request) {
 		_, ok := workos.SessionFrom(r)
@@ -299,7 +299,7 @@ func TestLoginCallbackSessionAndLogout(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("/me = %d %s", resp.StatusCode, body)
 	}
-	for _, want := range []string{`"user":"user_01"`, `"org":"org_1"`, `"role":"admin"`, `"invoices:read"`, `"email":"ana@example.com"`, `"sid":"session_01"`} {
+	for _, want := range []string{`"flags":["new-billing"]`, `"user":"user_01"`, `"org":"org_1"`, `"role":"admin"`, `"invoices:read"`, `"email":"ana@example.com"`, `"sid":"session_01"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/me lacks %s: %s", want, body)
 		}
@@ -416,19 +416,24 @@ func TestSwitchOrganizationRegrantsTheSession(t *testing.T) {
 	f := newFake(t)
 	base := start(t, f, func(a *gox.App) {
 		a.HandleFunc("POST /org/{id}", workos.RequireSession(func(w http.ResponseWriter, r *http.Request) {
-			if err := workos.SwitchOrganization(w, r, r.PathValue("id")); err != nil {
+			s, err := workos.SwitchOrganization(w, r, r.PathValue("id"))
+			if err != nil {
 				gox.Error(w, r, err)
 				return
 			}
-			w.WriteHeader(http.StatusNoContent)
+			_ = gox.JSON(w, http.StatusOK, map[string]string{"org": s.OrganizationID})
 		}))
 	})
 	c := browser(t)
 	setSessionCookie(c, base, f.sealed(time.Hour))
 	req, _ := http.NewRequest(http.MethodPost, base+"/org/org_2", nil)
 	resp, err := c.Do(req)
-	if err != nil || resp.StatusCode != http.StatusNoContent {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("switch = %v %v", resp, err)
+	}
+	switched, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(switched), `"org":"org_2"`) {
+		t.Fatalf("SwitchOrganization must return the re-granted session: %s", switched)
 	}
 	if _, body := get(t, c, base+"/me"); !strings.Contains(body, `"org":"org_2"`) {
 		t.Fatalf("after the switch: %s", body)
@@ -530,4 +535,35 @@ func TestFromPanicsWithoutEnable(t *testing.T) {
 		}
 	}()
 	workos.From(a)
+}
+
+// A single-page app ends the session with a fetch and navigates itself.
+func TestEndSessionClearsTheCookieAndReturnsTheLogoutURL(t *testing.T) {
+	f := newFake(t)
+	base := start(t, f, func(a *gox.App) {
+		a.HandleFunc("DELETE /api/session", func(w http.ResponseWriter, r *http.Request) {
+			_ = gox.JSON(w, http.StatusOK, map[string]string{"logout_url": workos.EndSession(w, r, "https://shop.example/")})
+		})
+	})
+	c := browser(t)
+	setSessionCookie(c, base, f.sealed(time.Hour))
+	req, _ := http.NewRequest(http.MethodDelete, base+"/api/session", nil)
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "/user_management/sessions/logout?session_id=session_01") || !strings.Contains(string(body), "return_to=") {
+		t.Fatalf("body = %s", body)
+	}
+	if sessionCookie(c, base) != "" {
+		t.Fatal("the cookie must be cleared")
+	}
+	// Anonymous: nothing to end remotely.
+	anonymous, _ := http.NewRequest(http.MethodDelete, base+"/api/session", nil)
+	resp, _ = browser(t).Do(anonymous)
+	body, _ = io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `"logout_url":""`) {
+		t.Fatalf("anonymous = %s", body)
+	}
 }

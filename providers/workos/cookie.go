@@ -45,19 +45,21 @@ func (f *feature) sdkPassword() string {
 	return "gox-workos-transient-seal-password-0000"
 }
 
-// subject reads sub from an access token the SDK has already verified.
-func subject(accessToken string) string {
+// tokenClaims reads the claims the SDK's result does not carry, from an
+// access token the SDK has already verified.
+func tokenClaims(accessToken string) (subject string, featureFlags []string) {
 	parts := strings.Split(accessToken, ".")
 	if len(parts) != 3 {
-		return ""
+		return "", nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return ""
+		return "", nil
 	}
 	var claims struct {
-		Sub string `json:"sub"`
+		Sub          string   `json:"sub"`
+		FeatureFlags []string `json:"feature_flags"`
 	}
 	_ = json.Unmarshal(raw, &claims)
-	return claims.Sub
+	return claims.Sub, claims.FeatureFlags
 }

@@ -665,16 +665,17 @@ func (c *Config) Validate() error  // Validate checks the section after loading.
 type Option func(*options)  // Option configures Enable.
 func WithSessionCodec(c SessionCodec) Option  // WithSessionCodec replaces how the session cookie is sealed, for services that share the cookie with an application using another WorkOS SDK.
 func WithSessions() Option  // WithSessions authenticates every request: the sealed session cookie, or a bearer access token when the Authorization header carries one.
-type Session struct{ ID string; UserID string; OrganizationID string; Role string; Permissions []string; Entitlements []string; User *sdk.User; Impersonator *sdk.AuthenticateResponseImpersonator }  // Session is the authenticated caller of a request.
+type Session struct{ ID string; UserID string; OrganizationID string; Role string; Permissions []string; Entitlements []string; FeatureFlags []string; User *sdk.User; Impersonator *sdk.AuthenticateResponseImpersonator }  // Session is the authenticated caller of a request.
 func SessionFrom(r *http.Request) (*Session, bool)  // SessionFrom returns the request's session; ok is false for anonymous requests.
+func SwitchOrganization(w http.ResponseWriter, r *http.Request, organizationID string) (*Session, error)  // SwitchOrganization re-grants the request's session into another organization the user belongs to, rotates the cookie and returns the new session (the one SessionFrom holds is the old one for the rest of this request).
 type SessionCodec interface { Seal(data *sdk.SessionData, password string) (string, error) Unseal(sealed, password string) (*sdk.SessionData, error) }  // SessionCodec seals and unseals the session cookie value.
 func Callback(a *gox.App) http.HandlerFunc  // Callback returns the handler for the redirect URI: it checks the state, exchanges the code, writes the session cookie and redirects to the path Login remembered (or "/").
 func Enable(opts ...Option) gox.Option  // Enable registers the WORKOS config section and builds the API client.
+func EndSession(w http.ResponseWriter, r *http.Request, returnTo string) string  // EndSession clears the session cookie and returns the WorkOS logout URL the browser should visit to end the session there too, or "" when the request carried no session.
 func From(a *gox.App) *sdk.Client  // From returns the WorkOS API client.
 func Login(a *gox.App) http.HandlerFunc  // Login returns the handler that starts an AuthKit sign-in: it redirects to the hosted login and remembers ?return_to= (local paths only) for Callback.
 func Logout(a *gox.App) http.HandlerFunc  // Logout returns the handler that clears the session cookie and redirects to the WorkOS logout URL, which ends the session there and returns to ?return_to= when the application configured it as a logout redirect.
 func RequireSession(next http.HandlerFunc) http.HandlerFunc  // RequireSession wraps a handler so anonymous requests get a 401.
-func SwitchOrganization(w http.ResponseWriter, r *http.Request, organizationID string) error  // SwitchOrganization re-grants the request's session into another organization the user belongs to and rotates the cookie.
 func VerifyWebhook(a *gox.App, r *http.Request) (*sdk.EventSchema, error)  // VerifyWebhook reads the request body, checks the WorkOS-Signature header against WORKOS_WEBHOOK_SECRET and returns the event.
 ```
 
