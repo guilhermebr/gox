@@ -1,6 +1,6 @@
 # gox — build a Go service with one import
 
-gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
+gox is an opinionated service framework. It chooses the logger, config loader, HTTP server, middleware, observability, health endpoints and lifecycle so you do not. A plain HTTP service imports only `github.com/guilhermebr/gox`. Heavy integrations are opted in by importing their package and passing `Enable()` to `gox.New`: `gox/postgres`, `gox/jobs`, `gox/jwt`, `gox/openapi`, `gox/web`, and third-party clients under `gox/providers/*` (`gox/providers/supabase`, `gox/providers/temporal`, `gox/providers/workos`). This file is complete: everything public is listed below as Go signatures.
 
 Rules that always hold:
 - `main()` is `gox.MustNew(name, options...)`, handler registration, then `a.Run()`. gox owns start order, config, health, shutdown.
@@ -490,6 +490,29 @@ func NewFromConfig(cfg Config) (*supabase.Client, error)  // NewFromConfig creat
 
 <PREFIX>_SUPABASE_URL (string, required): project URL such as https://xyz.supabase.co
 <PREFIX>_SUPABASE_KEY (string, required, secret): anon or service role key
+
+## API: temporal
+
+import "github.com/guilhermebr/gox/providers/temporal"
+
+```go
+type Config struct{ Address string; Namespace string; APIKey string; TLS string; TLSCert string; TLSKey string; ConnectTimeout time.Duration; Work bool }  // Config is the TEMPORAL config section: BILLING_TEMPORAL_* under a service prefixed BILLING.
+func (c *Config) Validate() error  // Validate checks the section after loading.
+func Enable() gox.Option  // Enable declares the Temporal client: it registers the TEMPORAL config section and a component that checks the connection at boot (an unreachable server fails the start, not the first workflow), exposes readiness, starts the workers registered with Worker, and on shutdown lets running activities finish within the shutdown budget before closing the client.
+func From(a *gox.App) client.Client  // From returns the Temporal client, for starting, signalling and querying workflows.
+func Worker(a *gox.App, taskQueue string, opts worker.Options) worker.Worker  // Worker returns the worker for a task queue, creating it on first use. Call it after New and before Run and register workflows and activities on the result; the app starts and stops it.
+```
+
+## Config: temporal (declared by temporal.Enable())
+
+<PREFIX>_TEMPORAL_ADDRESS (string, default localhost:7233): host:port of the Temporal frontend
+<PREFIX>_TEMPORAL_NAMESPACE (string, default default)
+<PREFIX>_TEMPORAL_API_KEY (string, secret): Temporal Cloud API key; implies TLS
+<PREFIX>_TEMPORAL_TLS (string, default auto): auto | true | false; auto is on with an API key or a client certificate
+<PREFIX>_TEMPORAL_TLS_CERT (string): PEM client certificate for mTLS; needs TLS_KEY
+<PREFIX>_TEMPORAL_TLS_KEY (string, secret): PEM client key for mTLS
+<PREFIX>_TEMPORAL_CONNECT_TIMEOUT (duration, default 10s): how long the boot health check may take
+<PREFIX>_TEMPORAL_WORK (bool, default true): run the registered workers in this process; false only starts workflows (an API next to a separate worker)
 
 ## API: workos
 
