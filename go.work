@@ -10,6 +10,7 @@ use (
 	./osrelease
 	./postgres
 	./providers/supabase
+	./providers/temporal
 	./providers/workos
 	./web
 )
