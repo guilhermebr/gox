@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/guilhermebr/gox/pkg/config"
 	"github.com/guilhermebr/gox/pkg/httpclient"
 	"github.com/guilhermebr/gox/pkg/httpserver"
 	"github.com/guilhermebr/gox/pkg/httpx"
@@ -40,7 +41,7 @@ type (
 // default middleware chain, /healthz and /readyz on the public port, and
 // 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
 //
-// Chain: error renderers → route capture → recovery → request id → tracing → metrics →
+// Chain: error renderers → route capture → recovery → request id → client ip → tracing → metrics →
 // logging → timeout → max bytes → security headers → CORS (WithCORS) →
 // cross-origin protection → feature middleware (Builder.Middleware) → auth (WithAuth) →
 // WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
@@ -60,6 +61,10 @@ func HTTP(opts ...HTTPOption) Option {
 			if err != nil {
 				return nil, err
 			}
+			clientIP, err := middleware.ClientIP(cfg.TrustedProxies)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", config.EnvName(a.prefix, "HTTP_TRUSTED_PROXIES"), err)
+			}
 			mux := httpserver.NewMux()
 			chain := []Middleware{
 				withErrorRenderers(append(b.renderers[:len(b.renderers):len(b.renderers)], b.appRenderers...)),
@@ -69,6 +74,7 @@ func HTTP(opts ...HTTPOption) Option {
 				}),
 				middleware.Recovery(a.log),
 				middleware.RequestID(),
+				clientIP,
 				middleware.Tracing(a.otel.Tracer, a.otel.Propagator),
 				metrics,
 				middleware.Logging(a.log),

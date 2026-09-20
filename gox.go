@@ -114,6 +114,20 @@ func WithVersion(v string) Option {
 	}
 }
 
+// WithEnvAlias makes the variable name (without the service prefix, such
+// as "POSTGRES_URL") fall back to another environment variable when it is
+// not set: the name a platform injects ("DATABASE_URL") or one a service
+// already deployed under. The service's own variable always wins.
+func WithEnvAlias(name, alias string) Option {
+	return func(b *Builder) error {
+		if name == "" || alias == "" {
+			return fmt.Errorf("WithEnvAlias needs a variable name and an alias")
+		}
+		b.aliases = append(b.aliases, envAlias{name: name, alias: alias})
+		return nil
+	}
+}
+
 // WithConfigPrefix sets the environment prefix. The default is the
 // uppercased service name; "" means unprefixed variables (HTTP_ADDR, ...).
 func WithConfigPrefix(p string) Option {
@@ -180,6 +194,14 @@ func (b *Builder) build() (*App, error) {
 		ub, _ := config.BaseOf(b.userCfg)
 		*ub = *base
 		base = ub
+	}
+	for _, al := range b.aliases {
+		name := config.EnvName(prefix, al.name)
+		if _, set := os.LookupEnv(name); !set {
+			if v, ok := os.LookupEnv(al.alias); ok {
+				_ = os.Setenv(name, v)
+			}
+		}
 	}
 	if err := config.LoadSections(prefix, dst, b.sections); err != nil {
 		return nil, err

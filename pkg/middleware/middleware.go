@@ -127,6 +127,7 @@ func Logging(logger *slog.Logger) Middleware {
 			}
 			reqLog.LogAttrs(r.Context(), level, "request",
 				slog.String("route", Route(r)),
+				slog.String("client_ip", ClientIPFrom(r)),
 				slog.Int("status", rec.status),
 				slog.Int("bytes", rec.bytes),
 				slog.Duration(log.KeyDuration, time.Since(began)))

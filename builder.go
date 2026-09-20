@@ -44,6 +44,7 @@ type Builder struct {
 	http            *httpOptions
 	middleware      []Middleware
 	features        []Middleware
+	aliases         []envAlias
 	renderers       []httpx.ErrorRenderer // from feature packages
 	appRenderers    []httpx.ErrorRenderer // from WithErrorRenderer; run after the features
 	auth            Middleware
@@ -117,3 +118,5 @@ func (b *Builder) ErrorRenderer(fn httpx.ErrorRenderer) {
 func (b *Builder) Set(key, value any) {
 	b.values[key] = value
 }
+
+type envAlias struct{ name, alias string }
