@@ -74,14 +74,18 @@ func main() {
 }
 ```
 
-Typed handlers from the same document: `oapi-codegen` with the `std-http-server`
-target emits an interface and a registration function for `net/http`'s mux,
-which is what `a.Mux()` is:
+Typed handlers from the same document: generate the types with `oapi-codegen`
+and write handlers against them. `start-from-a-contract.md` is that flow end to
+end — the `api` package, the pinned generator, the wiring, and the one mistake
+that makes a contract look like it is being ignored.
 
 ```
-go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -generate types,std-http-server -package api -o api/api.gen.go api/openapi.yaml
+go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -generate types -package api -o api/api.gen.go api/openapi.yaml
 ```
 
-then `api.HandlerFromMux(server, a.Mux())`. Pair it with
+`oapi-codegen` also has a `std-http-server` target, which emits an interface
+plus a `HandlerFromMux` for `net/http`'s mux, which is what `a.Mux()` is. Use
+it *instead of* registering routes yourself, never alongside: a service with
+both has two ways to mount the same operation. Pair either with
 `gox.WithErrorRenderer(gox.ProblemJSON)` when the contract declares problem
 details for errors.
