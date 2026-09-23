@@ -74,3 +74,29 @@ func TestGenerateTokenWithClaimsNeedsASigningKey(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNoSigningKey", err)
 	}
 }
+
+func TestRefreshTokenKeepsTheApplicationsClaims(t *testing.T) {
+	// A short expiry puts the token inside the refresh window straight away.
+	s := jwt.NewHS256([]byte("a-test-secret-of-at-least-32-bytes!!"), "billing", time.Minute)
+	token, err := s.GenerateTokenWithClaims("u-1", "a@example.com", "user", map[string]any{
+		"organization_id": "org-7",
+		"is_admin":        true,
+	})
+	if err != nil {
+		t.Fatalf("GenerateTokenWithClaims: %v", err)
+	}
+	refreshed, err := s.RefreshToken(token)
+	if err != nil {
+		t.Fatalf("RefreshToken: %v", err)
+	}
+	claims, err := s.ValidateToken(refreshed)
+	if err != nil {
+		t.Fatalf("ValidateToken: %v", err)
+	}
+	if got := claims.Raw["organization_id"]; got != "org-7" {
+		t.Errorf("organization_id = %v, want org-7: a refresh must not drop the application's claims", got)
+	}
+	if got := claims.Raw["is_admin"]; got != true {
+		t.Errorf("is_admin = %v, want true", got)
+	}
+}

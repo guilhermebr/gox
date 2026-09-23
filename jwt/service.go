@@ -210,5 +210,17 @@ func (s *Service) RefreshToken(tokenString string) (string, error) {
 	if claims.ExpiresAt != nil && time.Until(claims.ExpiresAt.Time) > RefreshWindow {
 		return tokenString, nil
 	}
-	return s.GenerateToken(claims.UserID, claims.Email, claims.AccountType)
+	// Carry the application's own claims over: a refresh must not quietly
+	// return a token that says less than the one it replaces.
+	var extra map[string]any
+	for name, v := range claims.Raw {
+		if reservedClaims[name] {
+			continue
+		}
+		if extra == nil {
+			extra = make(map[string]any, len(claims.Raw))
+		}
+		extra[name] = v
+	}
+	return s.GenerateTokenWithClaims(claims.UserID, claims.Email, claims.AccountType, extra)
 }
