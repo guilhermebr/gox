@@ -69,11 +69,29 @@ them; keep it green.
 
 ## Adding a feature package
 
-1. `mkdir <name> && go mod init github.com/guilhermebr/gox/<name>`; add `require github.com/guilhermebr/gox v0.0.0` and `replace github.com/guilhermebr/gox => ../` (until the root is tagged); add `./<name>` to `go.work`.
+1. `mkdir <name> && go mod init github.com/guilhermebr/gox/<name>`; add `require github.com/guilhermebr/gox <latest tag>`; add `./<name>` to `go.work`, which is what makes the working tree win locally. Do not add a `replace` back to the root: Go ignores a replace in a dependency's go.mod, so a module that needs one is broken for everyone who imports it by version.
 2. `Config` struct with `conf` tags and a `Validate() error`.
 3. `Enable(opts ...Option) gox.Option` that calls `b.ConfigSection("<NAME>", cfg, "<name>.Enable()")` and registers a `b.Component(stage, factory)` (or `b.Setup` for a value with no lifecycle, `b.Finish` to decorate another feature's output, `b.Middleware` for request middleware, `b.ErrorRenderer` for error output).
 4. `From(a *gox.App) T` implemented as `gox.MustValue[T](a, key{}, "<name>.From", "<name>.Enable()")`.
 5. Tests through a real `gox.New`, an example under `examples/`, a depguard rule in `.golangci.yml`, a line in `cmd/gox/main.go`'s spec so `llm.txt` documents it, a probe line in the Makefile's `check-deps`, and an ADR.
+
+## Releasing a module
+
+Modules are versioned independently and tagged `<module>/vX.Y.Z` (the root is
+plain `vX.Y.Z`). The order matters, because a nested module cannot reference a
+root version that is not fetchable yet:
+
+1. Tag and push the root: `git tag v0.2.0 && git push origin v0.2.0`.
+2. In each module to release, point it at that version
+   (`go mod edit -dropreplace=github.com/guilhermebr/gox -require=github.com/guilhermebr/gox@v0.2.0`),
+   commit, then tag `<module>/v0.2.0` and push.
+3. Prove it resolves outside the workspace: `GOWORK=off go build ./...` in the
+   module. `make ci` runs under `go.work` and will pass either way, so it
+   cannot tell you whether a tag works.
+
+Released so far: root, `jwt`, `providers/temporal` at `v0.1.0`. The rest still
+carry `v0.0.0` and a local `replace`; they are unreleased, and the first
+consumer to need one triggers the steps above.
 
 ## Never
 
