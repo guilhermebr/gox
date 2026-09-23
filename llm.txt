@@ -444,8 +444,10 @@ const RefreshWindow  // RefreshWindow is how close to expiry a token must be for
 var ErrInvalidToken error  // ErrInvalidToken indicates the token failed signature or validity checks.
 var ErrInvalidClaims error  // ErrInvalidClaims indicates the token's claims could not be decoded.
 var ErrNoSigningKey error  // ErrNoSigningKey is returned by GenerateToken on a verify-only service.
-type Claims struct{ UserID string; Email string; AccountType string; jwt.RegisteredClaims; Raw map[string]any }  // Claims are the JWT claims issued and validated by Service.
+var ErrReservedClaim error  // ErrReservedClaim indicates an application claim used a name the standard claims already occupy.
+type Claims struct{ UserID string; Email string; AccountType string; jwt.RegisteredClaims; Raw map[string]any; Extra map[string]any }  // Claims are the JWT claims issued and validated by Service.
 func ClaimsFromContext(ctx context.Context) (*Claims, bool)  // ClaimsFromContext returns the claims Auth stored for this request.
+func (c Claims) MarshalJSON() ([]byte, error)  // MarshalJSON writes the standard claims and then the application's own, so a token carries both in one flat object.
 func (c *Claims) UnmarshalJSON(b []byte) error  // UnmarshalJSON decodes the typed fields and keeps the whole claim set in Raw.
 type Config struct{ SecretKey string; PublicKey string; JWKSURL string; PrivateKey string; Issuer string; Expiry time.Duration }  // Config is the JWT config section: BILLING_JWT_* under a service prefixed BILLING.
 func (c *Config) Validate() error  // Validate checks that exactly one algorithm is configured and that the PEM keys parse.
@@ -458,6 +460,7 @@ func NewHS256(secret []byte, issuer string, expiry time.Duration) *Service  // N
 func NewJWKS(url, issuer string, client *http.Client) *Service  // NewJWKS creates a verify-only Service for tokens an identity provider signs with RS256: keys come from the provider's JWKS document at url, are cached, and follow rotation (an unknown key id triggers one rate-limited refetch).
 func NewRS256(priv *rsa.PrivateKey, pub *rsa.PublicKey, issuer string, expiry time.Duration) *Service  // NewRS256 creates a Service that verifies with pub and, when priv is not nil, signs with it.
 func (s *Service) GenerateToken(userID, email, accountType string) (string, error)  // GenerateToken issues a signed token for the given user.
+func (s *Service) GenerateTokenWithClaims(userID, email, accountType string, extra map[string]any) (string, error)  // GenerateTokenWithClaims issues a signed token that also carries the application's own claims, such as the organization a user acts for or a role.
 func (s *Service) RefreshToken(tokenString string) (string, error)  // RefreshToken returns a fresh token when the supplied one is within RefreshWindow of expiry, otherwise the original token unchanged.
 func (s *Service) ValidateToken(tokenString string) (*Claims, error)  // ValidateToken parses and verifies a token, returning its claims.
 func Auth(svc *Service) gox.Middleware  // Auth is the middleware for gox.WithAuth: it validates the bearer token with svc and stores the claims for ClaimsFromContext.

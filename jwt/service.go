@@ -19,6 +19,10 @@ var (
 	ErrInvalidClaims = errors.New("jwt: invalid token claims")
 	// ErrNoSigningKey is returned by GenerateToken on a verify-only service.
 	ErrNoSigningKey = errors.New("jwt: no signing key configured")
+
+	// ErrReservedClaim indicates an application claim used a name the
+	// standard claims already occupy.
+	ErrReservedClaim = errors.New("jwt: reserved claim name")
 )
 
 // Claims are the JWT claims issued and validated by Service.
@@ -32,6 +36,40 @@ type Claims struct {
 	// without a field here: what an identity provider adds (org_id,
 	// permissions, roles). It is not part of issued tokens.
 	Raw map[string]any `json:"-"`
+
+	// Extra holds the application's own claims to issue alongside the
+	// standard ones. GenerateTokenWithClaims sets it; reading a token fills
+	// Raw instead.
+	Extra map[string]any `json:"-"`
+}
+
+// reservedClaims are the names Claims and RegisteredClaims already occupy, so
+// an application claim cannot redefine the subject, the expiry or the issuer.
+var reservedClaims = map[string]bool{
+	"user_id": true, "email": true, "account_type": true,
+	"iss": true, "sub": true, "aud": true,
+	"exp": true, "nbf": true, "iat": true, "jti": true,
+}
+
+// MarshalJSON writes the standard claims and then the application's own, so a
+// token carries both in one flat object.
+func (c Claims) MarshalJSON() ([]byte, error) {
+	type plain Claims
+	b, err := json.Marshal(plain(c))
+	if err != nil {
+		return nil, err
+	}
+	if len(c.Extra) == 0 {
+		return b, nil
+	}
+	var merged map[string]any
+	if err := json.Unmarshal(b, &merged); err != nil {
+		return nil, err
+	}
+	for k, v := range c.Extra {
+		merged[k] = v
+	}
+	return json.Marshal(merged)
 }
 
 // UnmarshalJSON decodes the typed fields and keeps the whole claim set in Raw.
@@ -98,14 +136,29 @@ func NewFromConfig(cfg Config) (*Service, error) {
 
 // GenerateToken issues a signed token for the given user.
 func (s *Service) GenerateToken(userID, email, accountType string) (string, error) {
+	return s.GenerateTokenWithClaims(userID, email, accountType, nil)
+}
+
+// GenerateTokenWithClaims issues a signed token that also carries the
+// application's own claims, such as the organization a user acts for or a
+// role. A name the standard claims already use is refused with
+// ErrReservedClaim, so a caller cannot move the subject or the expiry through
+// this map. Reading them back is claims.Raw["organization_id"].
+func (s *Service) GenerateTokenWithClaims(userID, email, accountType string, extra map[string]any) (string, error) {
 	if s.signKey == nil {
 		return "", ErrNoSigningKey
+	}
+	for name := range extra {
+		if reservedClaims[name] {
+			return "", fmt.Errorf("%w: %s", ErrReservedClaim, name)
+		}
 	}
 	now := time.Now()
 	claims := &Claims{
 		UserID:      userID,
 		Email:       email,
 		AccountType: accountType,
+		Extra:       extra,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.Must(uuid.NewV7()).String(),
 			Issuer:    s.issuer,
