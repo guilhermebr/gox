@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/providers/temporal
 go 1.26.0
 
 require (
-	github.com/guilhermebr/gox v0.0.0
+	github.com/guilhermebr/gox v0.1.0
 	go.temporal.io/sdk v1.49.0
 	go.temporal.io/sdk/contrib/opentelemetry v0.8.1
 )
@@ -59,5 +59,3 @@ require (
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-replace github.com/guilhermebr/gox => ../../
