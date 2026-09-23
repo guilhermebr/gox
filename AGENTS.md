@@ -89,7 +89,8 @@ root version that is not fetchable yet:
    module. `make ci` runs under `go.work` and will pass either way, so it
    cannot tell you whether a tag works.
 
-Released so far: root, `jwt`, `providers/temporal` at `v0.1.0`. The rest still
+Released so far: root, `jwt`, `providers/temporal`, `providers/workos` at
+`v0.1.0`. The rest still
 carry `v0.0.0` and a local `replace`; they are unreleased, and the first
 consumer to need one triggers the steps above.
 
