@@ -567,3 +567,32 @@ func TestEndSessionClearsTheCookieAndReturnsTheLogoutURL(t *testing.T) {
 		t.Fatalf("anonymous = %s", body)
 	}
 }
+
+// A refresh token is single-use, so the request that loses the race to
+// exchange it must be given the session the winner obtained. Before this was
+// handled, the loser exchanged the consumed token, WorkOS answered
+// invalid_grant, and a burst of requests on an expired session logged the
+// user out. The sequential form is the same bug without the timing.
+func TestARequestStillHoldingTheConsumedRefreshTokenStaysAuthenticated(t *testing.T) {
+	f := newFake(t)
+	base := start(t, f, nil)
+	old := f.sealed(-time.Minute)
+
+	first := browser(t)
+	setSessionCookie(first, base, old)
+	if resp, body := get(t, first, base+"/me"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("the first request = %d %s", resp.StatusCode, body)
+	}
+
+	// Another request carrying the same cookie, arriving after the exchange
+	// finished rather than while it was in flight.
+	second := browser(t)
+	setSessionCookie(second, base, old)
+	resp, body := get(t, second, base+"/me")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the request holding the consumed token = %d %s, want 200", resp.StatusCode, body)
+	}
+	if n := f.refreshes.Load(); n != 1 {
+		t.Fatalf("refresh grants = %d, want 1: the consumed token must not be exchanged again", n)
+	}
+}

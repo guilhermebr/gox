@@ -3,8 +3,10 @@ package workos
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	sdk "github.com/workos/workos-go/v10"
+
 	"golang.org/x/sync/singleflight"
 
 	"github.com/guilhermebr/gox"
@@ -65,6 +67,10 @@ type feature struct {
 	codec      SessionCodec
 	production bool
 	refreshes  singleflight.Group
+
+	// granted remembers, for a short while, the session each refresh token
+	// was exchanged for. See feature.refresh.
+	granted sync.Map
 }
 
 // Enable registers the WORKOS config section and builds the API client.

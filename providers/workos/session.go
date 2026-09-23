@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	sdk "github.com/workos/workos-go/v10"
 
@@ -122,11 +123,58 @@ func (f *feature) authenticate(ctx context.Context, data *sdk.SessionData) *sdk.
 
 var errRevoked = errors.New("workos: refresh token revoked")
 
+// grantWindow is how long a spent refresh token still resolves to the session
+// it bought. It covers the requests that were already in flight behind it and
+// nothing more: a token replayed after this is treated as revoked, which is
+// what makes reuse detectable.
+const grantWindow = 30 * time.Second
+
+type grant struct {
+	data *sdk.SessionData
+	at   time.Time
+}
+
+// grantedFor returns the session a refresh token was exchanged for, while the
+// grant window lasts.
+func (f *feature) grantedFor(key string) *sdk.SessionData {
+	v, ok := f.granted.Load(key)
+	if !ok {
+		return nil
+	}
+	g := v.(grant)
+	if time.Since(g.at) > grantWindow {
+		f.granted.Delete(key)
+		return nil
+	}
+	return g.data
+}
+
+// remember records the exchange and drops the grants that have expired, so
+// the map holds only what is still inside the window.
+func (f *feature) remember(key string, data *sdk.SessionData) {
+	f.granted.Store(key, grant{data: data, at: time.Now()})
+	f.granted.Range(func(k, v any) bool {
+		if time.Since(v.(grant).at) > grantWindow {
+			f.granted.Delete(k)
+		}
+		return true
+	})
+}
+
 // refresh exchanges the refresh token, scoped to organizationID when set.
 // Refresh tokens are single-use, so concurrent requests carrying the same
 // one share a single grant.
 func (f *feature) refresh(ctx context.Context, data *sdk.SessionData, organizationID string) (*sdk.SessionData, error) {
-	v, err, _ := f.refreshes.Do(data.RefreshToken+"|"+organizationID, func() (any, error) {
+	key := data.RefreshToken + "|" + organizationID
+	v, err, _ := f.refreshes.Do(key, func() (any, error) {
+		// Coalescing is not enough on its own: a request that arrives just
+		// after the exchange finished starts a flight of its own, and the
+		// token it carries has already been spent. Without this the provider
+		// answers invalid_grant and a burst of requests on an expired
+		// session signs the user out.
+		if fresh := f.grantedFor(key); fresh != nil {
+			return fresh, nil
+		}
 		params := &sdk.UserManagementAuthenticateWithRefreshTokenParams{RefreshToken: data.RefreshToken}
 		if organizationID != "" {
 			params.OrganizationID = &organizationID
@@ -139,7 +187,9 @@ func (f *feature) refresh(ctx context.Context, data *sdk.SessionData, organizati
 			}
 			return nil, err
 		}
-		return &sdk.SessionData{AccessToken: resp.AccessToken, RefreshToken: resp.RefreshToken, User: resp.User, Impersonator: resp.Impersonator}, nil
+		fresh := &sdk.SessionData{AccessToken: resp.AccessToken, RefreshToken: resp.RefreshToken, User: resp.User, Impersonator: resp.Impersonator}
+		f.remember(key, fresh)
+		return fresh, nil
 	})
 	if err != nil {
 		return nil, err
