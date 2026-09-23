@@ -80,6 +80,9 @@ func TestConfigIsValidated(t *testing.T) {
 		"BILLING_TEMPORAL_TLS":     {"BILLING_TEMPORAL_TLS": "sometimes"},
 		"BILLING_TEMPORAL_TLS_KEY": {"BILLING_TEMPORAL_TLS_CERT": "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----"},
 		"BILLING_TEMPORAL_ADDRESS": {"BILLING_TEMPORAL_ADDRESS": "https://temporal.example:7233"},
+		// The field is TLSCA, so the variable name is pinned by the conf tag;
+		// without it the section would read TEMPORAL_TLSCA instead.
+		"BILLING_TEMPORAL_TLS_CA": {"BILLING_TEMPORAL_TLS_CA": "not a pem"},
 	}
 	for want, env := range cases {
 		t.Run(want, func(t *testing.T) {

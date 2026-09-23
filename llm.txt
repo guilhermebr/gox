@@ -638,7 +638,7 @@ func NewFromConfig(cfg Config) (*supabase.Client, error)  // NewFromConfig creat
 import "github.com/guilhermebr/gox/providers/temporal"
 
 ```go
-type Config struct{ Address string; Namespace string; APIKey string; TLS string; TLSCert string; TLSKey string; ConnectTimeout time.Duration; Work bool }  // Config is the TEMPORAL config section: BILLING_TEMPORAL_* under a service prefixed BILLING.
+type Config struct{ Address string; Namespace string; APIKey string; TLS string; TLSCert string; TLSKey string; TLSCA string; TLSServerName string; ConnectTimeout time.Duration; Work bool }  // Config is the TEMPORAL config section: BILLING_TEMPORAL_* under a service prefixed BILLING.
 func (c *Config) Validate() error  // Validate checks the section after loading.
 func Enable() gox.Option  // Enable declares the Temporal client: it registers the TEMPORAL config section and a component that checks the connection at boot (an unreachable server fails the start, not the first workflow), exposes readiness, starts the workers registered with Worker, and on shutdown lets running activities finish within the shutdown budget before closing the client.
 func From(a *gox.App) client.Client  // From returns the Temporal client, for starting, signalling and querying workflows.
@@ -653,6 +653,8 @@ func Worker(a *gox.App, taskQueue string, opts worker.Options) worker.Worker  //
 <PREFIX>_TEMPORAL_TLS (string, default auto): auto | true | false; auto is on with an API key or a client certificate
 <PREFIX>_TEMPORAL_TLS_CERT (string): PEM client certificate for mTLS; needs TLS_KEY
 <PREFIX>_TEMPORAL_TLS_KEY (string, secret): PEM client key for mTLS
+<PREFIX>_TEMPORAL_TLS_CA (string): PEM root certificates that verify the server; the system pool is used when empty
+<PREFIX>_TEMPORAL_TLS_SERVER_NAME (string): server name the server certificate must match; the address host is used when empty
 <PREFIX>_TEMPORAL_CONNECT_TIMEOUT (duration, default 10s): how long the boot health check may take
 <PREFIX>_TEMPORAL_WORK (bool, default true): run the registered workers in this process; false only starts workflows (an API next to a separate worker)
 

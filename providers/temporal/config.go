@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -18,6 +19,8 @@ type Config struct {
 	TLS            string        `conf:"default:auto,help:auto | true | false; auto is on with an API key or a client certificate"`
 	TLSCert        string        `conf:"help:PEM client certificate for mTLS; needs TLS_KEY"`
 	TLSKey         string        `conf:"mask,help:PEM client key for mTLS"`
+	TLSCA          string        `conf:"env:TLS_CA,help:PEM root certificates that verify the server; the system pool is used when empty"`
+	TLSServerName  string        `conf:"help:server name the server certificate must match; the address host is used when empty"`
 	ConnectTimeout time.Duration `conf:"default:10s,help:how long the boot health check may take"`
 	Work           bool          `conf:"default:true,help:run the registered workers in this process; false only starts workflows (an API next to a separate worker)"`
 }
@@ -41,6 +44,9 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("TEMPORAL_TLS_CERT and TEMPORAL_TLS_KEY: %w", err))
 		}
 	}
+	if c.TLSCA != "" && !x509.NewCertPool().AppendCertsFromPEM([]byte(c.TLSCA)) {
+		errs = append(errs, errors.New("TEMPORAL_TLS_CA must be one or more PEM certificates"))
+	}
 	if c.ConnectTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("TEMPORAL_CONNECT_TIMEOUT must be > 0, got %v", c.ConnectTimeout))
 	}
@@ -49,7 +55,7 @@ func (c *Config) Validate() error {
 
 // tlsConfig returns nil for a plaintext connection.
 func (c *Config) tlsConfig() *tls.Config {
-	on := c.TLS == "true" || (c.TLS == "auto" && (c.APIKey != "" || c.TLSCert != ""))
+	on := c.TLS == "true" || (c.TLS == "auto" && (c.APIKey != "" || c.TLSCert != "" || c.TLSCA != ""))
 	if !on {
 		return nil
 	}
@@ -59,5 +65,12 @@ func (c *Config) tlsConfig() *tls.Config {
 			cfg.Certificates = []tls.Certificate{pair}
 		}
 	}
+	if c.TLSCA != "" {
+		pool := x509.NewCertPool()
+		if pool.AppendCertsFromPEM([]byte(c.TLSCA)) { // Validate already checked it
+			cfg.RootCAs = pool
+		}
+	}
+	cfg.ServerName = c.TLSServerName
 	return cfg
 }
