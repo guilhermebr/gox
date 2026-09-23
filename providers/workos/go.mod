@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/guilhermebr/gox v0.0.0
+	github.com/guilhermebr/gox v0.1.0
 	github.com/workos/workos-go/v10 v10.5.0
 	golang.org/x/sync v0.23.0
 )
@@ -48,5 +48,3 @@ require (
 	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-replace github.com/guilhermebr/gox => ../../
