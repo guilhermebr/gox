@@ -116,8 +116,8 @@ func (f *feature) resolve(w http.ResponseWriter, r *http.Request, sealed string)
 	if err != nil {
 		// The session could not be checked at all (sealing it for the SDK
 		// failed): keep the cookie for the next request. The SDK reports an
-		// unreachable JWKS as invalid_jwt, not as an error, so that case lands
-		// in "workos session rejected" below.
+		// unreachable JWKS as invalid_jwt, not as an error; keysMayBeAtFault
+		// and the key probe below handle that case.
 		f.log.WarnContext(ctx, "workos session check failed", "error", err)
 		return nil, nil
 	}
@@ -127,6 +127,24 @@ func (f *feature) resolve(w http.ResponseWriter, r *http.Request, sealed string)
 			// already expired here, usually a clock far off WorkOS's.
 			f.log.WarnContext(ctx, "workos session expired right after a refresh", "reason", res.Reason)
 			return nil, nil
+		}
+		if keysMayBeAtFault(res.Reason, f.issuer, data.AccessToken) {
+			v, fetched := f.keys.check(ctx, data.AccessToken)
+			if v != tokenRejected {
+				// The key set is down, or the token passes every check the SDK
+				// makes with keys the SDK did not have: keep the cookie; the
+				// session resumes once the SDK fetches the keys again. Warn once
+				// per probe fetch.
+				level, msg := slog.LevelDebug, "workos keys unreachable; session kept"
+				if fetched {
+					level = slog.LevelWarn
+				}
+				if v == tokenValid {
+					msg = "workos keys missing in the SDK; session kept"
+				}
+				f.log.Log(ctx, level, msg, "keys_url", f.keys.url)
+				return nil, nil
+			}
 		}
 		// invalid_jwt here is usually a WORKOS_ISSUER that does not match the
 		// tokens' iss (set WORKOS_ISSUER to token_issuer); the cookie can never
@@ -148,7 +166,10 @@ func (f *feature) authenticate(ctx context.Context, data *sdk.SessionData) (*sdk
 	if err != nil {
 		return nil, err
 	}
-	res, err := sdk.NewSession(f.client, sealed, f.sdkPassword(), sdk.WithSessionIssuer(f.issuer)).AuthenticateContext(ctx)
+	// WithoutCancel: the SDK records a fetch attempt before making it and then
+	// refuses every token for 30s if it fails, so a client that disconnects
+	// mid-fetch must not cancel it. The SDK bounds the fetch at 5s.
+	res, err := sdk.NewSession(f.client, sealed, f.sdkPassword(), sdk.WithSessionIssuer(f.issuer)).AuthenticateContext(context.WithoutCancel(ctx))
 	if err != nil {
 		return nil, err
 	}

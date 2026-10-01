@@ -68,6 +68,7 @@ type feature struct {
 	codec      SessionCodec
 	log        *slog.Logger
 	issuer     string // the access-token issuer every verification uses; see Config.issuer
+	keys       *keyProbe
 	production bool
 	refreshes  singleflight.Group
 
@@ -99,9 +100,14 @@ func Enable(opts ...Option) gox.Option {
 				clientOpts = append(clientOpts, sdk.WithHTTPClient(a.HTTPClient()))
 			}
 			f.client = sdk.NewClient(cfg.APIKey, clientOpts...)
+			f.issuer = cfg.issuer()
+			var probeClient *http.Client
+			if a.HasHTTPClient() {
+				probeClient = a.HTTPClient()
+			}
+			f.keys = newKeyProbe(cfg, f.issuer, probeClient)
 			f.production = a.Config().Environment == "production"
 			f.log = a.Log().With("component", "workos")
-			f.issuer = cfg.issuer()
 			b.Set(clientKey{}, f.client)
 			b.Set(featureKey{}, f)
 			return nil

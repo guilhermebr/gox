@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/big"
@@ -50,7 +51,13 @@ type fake struct {
 	iss       string       // iss claim of the access tokens it issues
 	envIssuer string       // SHOP_WORKOS_ISSUER for start; "" leaves the issuer to its default
 	log       *slog.Logger // the service's logger in start; quiet when nil
+	jwksDown  atomic.Bool  // the key set endpoint answers 503
+	jwksFail  atomic.Int32 // the next n key set requests answer 503
+	jwksCalls atomic.Int32
+	id        string // client id; unique per fake so the SDK's process-wide key cache never mixes tests
 }
+
+var fakeSeq atomic.Int32
 
 var (
 	keyOnce sync.Once
@@ -59,10 +66,20 @@ var (
 
 func newFake(t *testing.T) *fake {
 	t.Helper()
-	keyOnce.Do(func() { testKey, _ = rsa.GenerateKey(rand.Reader, 2048) })
-	f := &fake{t: t, key: testKey, refresh: map[string]bool{}, ttl: time.Hour, iss: issuer, envIssuer: issuer}
+	keyOnce.Do(func() {
+		var err error
+		if testKey, err = rsa.GenerateKey(rand.Reader, 2048); err != nil {
+			panic(err)
+		}
+	})
+	f := &fake{t: t, key: testKey, refresh: map[string]bool{}, ttl: time.Hour, iss: issuer, envIssuer: issuer, id: fmt.Sprintf("client_%d", fakeSeq.Add(1))}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /sso/jwks/"+clientID, func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /sso/jwks/"+f.id, func(w http.ResponseWriter, _ *http.Request) {
+		f.jwksCalls.Add(1)
+		if f.jwksDown.Load() || f.jwksFail.Add(-1) >= 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
 			"kty": "RSA", "kid": "k1", "alg": "RS256", "use": "sig",
 			"n": base64.RawURLEncoding.EncodeToString(f.key.N.Bytes()),
@@ -173,7 +190,7 @@ func start(t *testing.T, f *fake, register func(a *gox.App), opts ...workos.Opti
 	addr := freeAddr(t)
 	t.Setenv("SHOP_HTTP_ADDR", addr)
 	t.Setenv("SHOP_WORKOS_API_KEY", "sk_test_123")
-	t.Setenv("SHOP_WORKOS_CLIENT_ID", clientID)
+	t.Setenv("SHOP_WORKOS_CLIENT_ID", f.id)
 	t.Setenv("SHOP_WORKOS_COOKIE_PASSWORD", password)
 	t.Setenv("SHOP_WORKOS_REDIRECT_URI", "http://"+addr+"/auth/callback")
 	t.Setenv("SHOP_WORKOS_BASE_URL", f.srv.URL)
@@ -269,7 +286,7 @@ func TestLoginCallbackSessionAndLogout(t *testing.T) {
 		t.Fatalf("login = %d", resp.StatusCode)
 	}
 	loc, _ := url.Parse(resp.Header.Get("Location"))
-	if !strings.HasPrefix(loc.String(), f.srv.URL+"/user_management/authorize") || loc.Query().Get("client_id") != clientID ||
+	if !strings.HasPrefix(loc.String(), f.srv.URL+"/user_management/authorize") || loc.Query().Get("client_id") != f.id ||
 		loc.Query().Get("provider") != "authkit" || loc.Query().Get("redirect_uri") != base+"/auth/callback" {
 		t.Fatalf("authorize url = %s", loc)
 	}
@@ -607,7 +624,7 @@ func TestARequestStillHoldingTheConsumedRefreshTokenStaysAuthenticated(t *testin
 func TestTheIssuerDefaultsToTheAuthKitClientIssuer(t *testing.T) {
 	f := newFake(t)
 	// AuthKit signs access tokens as <API base>/user_management/<client id>.
-	f.iss = f.srv.URL + "/user_management/" + clientID
+	f.iss = f.srv.URL + "/user_management/" + f.id
 	f.envIssuer = ""
 	base := start(t, f, nil)
 	c := browser(t)
@@ -706,5 +723,104 @@ func TestAFailedRefreshIsLogged(t *testing.T) {
 	_, _ = get(t, c, base+"/me")
 	if rec := logs.record("workos session refresh failed"); rec == nil || rec["level"] != "INFO" || rec["revoked"] != true {
 		t.Fatalf("a revoked refresh must be an info record with revoked=true, got %v", rec)
+	}
+}
+
+func TestAnUnreachableKeySetKeepsTheCookie(t *testing.T) {
+	f := newFake(t)
+	logs := &syncBuffer{}
+	f.log = jsonLogger(logs)
+	f.jwksDown.Store(true) // WorkOS is down while the service starts with an empty key cache
+	base := start(t, f, nil)
+
+	c := browser(t)
+	setSessionCookie(c, base, f.sealed(time.Hour))
+	if resp, _ := get(t, c, base+"/me"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("keys unreachable = %d, want 401 for this request", resp.StatusCode)
+	}
+	if sessionCookie(c, base) == "" {
+		t.Fatal("an outage of the key set must not sign the user out")
+	}
+	// Access tokens live minutes: one that expired during the outage must be
+	// kept too (the SDK cannot tell it is expired without the keys) and be
+	// refreshed once they are back.
+	expired := browser(t)
+	setSessionCookie(expired, base, f.sealed(-time.Minute))
+	_, _ = get(t, expired, base+"/me")
+	if sessionCookie(expired, base) == "" {
+		t.Fatal("a token that expired during the outage must not sign the user out")
+	}
+	if rec := logs.record("workos keys unreachable; session kept"); rec == nil || rec["level"] != "WARN" {
+		t.Fatalf("the outage must be a warning, got %v\n%s", rec, logs.String())
+	}
+	if rec := logs.record("workos session rejected"); rec != nil {
+		t.Fatalf("an outage must not be reported as a rejected session: %v", rec)
+	}
+
+	// Back up: the SDK keeps refusing for its 30s retry cooldown; the probe's
+	// own answer is reused for keyProbeTTL too, so the session stays kept
+	// either way and resumes once both have expired.
+	f.jwksDown.Store(false)
+	if resp, _ := get(t, c, base+"/me"); resp.StatusCode != http.StatusUnauthorized || sessionCookie(c, base) == "" {
+		t.Fatalf("right after recovery the session must still be kept: %d, cookie %q", resp.StatusCode, sessionCookie(c, base))
+	}
+}
+
+func TestATokenSignedByAnotherKeyIsStillRejected(t *testing.T) {
+	f := newFake(t)
+	base := start(t, f, nil)
+
+	other, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := gojwt.NewWithClaims(gojwt.SigningMethodRS256, gojwt.MapClaims{
+		"iss": issuer, "sub": "user_01", "sid": "session_01", "exp": time.Now().Add(time.Hour).Unix(),
+	})
+	tok.Header["kid"] = "k1"
+	forged, err := tok.SignedString(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, _ := sdk.SealSession(&sdk.SessionData{AccessToken: forged, RefreshToken: f.newRefreshToken()}, password)
+
+	c := browser(t)
+	setSessionCookie(c, base, sealed)
+	if resp, _ := get(t, c, base+"/me"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("forged token = %d", resp.StatusCode)
+	}
+	if sessionCookie(c, base) != "" {
+		t.Fatal("with the key set reachable, a token that fails verification must clear the cookie")
+	}
+}
+
+func TestTheKeySetProbeIsCached(t *testing.T) {
+	f := newFake(t)
+	f.jwksDown.Store(true)
+	base := start(t, f, nil)
+	for range 5 {
+		c := browser(t)
+		setSessionCookie(c, base, f.sealed(time.Hour))
+		_, _ = get(t, c, base+"/me")
+	}
+	// The SDK fetches once and then waits out its cooldown; the probe fetches
+	// once for the whole window.
+	if calls := f.jwksCalls.Load(); calls > 2 {
+		t.Fatalf("key set fetched %d times for 5 requests during an outage, want at most 2", calls)
+	}
+}
+
+func TestABlipInTheSDKsKeyFetchDoesNotSignUsersOut(t *testing.T) {
+	f := newFake(t)
+	f.jwksFail.Store(1) // the SDK's first fetch fails; WorkOS is up for everything after it
+	base := start(t, f, nil)
+
+	c := browser(t)
+	setSessionCookie(c, base, f.sealed(time.Hour))
+	if resp, _ := get(t, c, base+"/me"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("during the SDK's retry cooldown = %d, want 401 for this request", resp.StatusCode)
+	}
+	if sessionCookie(c, base) == "" {
+		t.Fatal("a token that verifies against the published keys must not be signed out while the SDK waits to retry")
 	}
 }
