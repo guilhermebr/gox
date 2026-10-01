@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
 	github.com/aws/smithy-go v1.28.1
-	github.com/guilhermebr/gox v0.0.0
+	github.com/guilhermebr/gox v0.1.0
 )
 
 require (
@@ -62,5 +62,3 @@ require (
 	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-replace github.com/guilhermebr/gox => ../../
