@@ -2,6 +2,7 @@ package workos
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -65,6 +66,8 @@ type feature struct {
 	cfg        *Config
 	client     *sdk.Client
 	codec      SessionCodec
+	log        *slog.Logger
+	issuer     string // the access-token issuer every verification uses; see Config.issuer
 	production bool
 	refreshes  singleflight.Group
 
@@ -97,6 +100,8 @@ func Enable(opts ...Option) gox.Option {
 			}
 			f.client = sdk.NewClient(cfg.APIKey, clientOpts...)
 			f.production = a.Config().Environment == "production"
+			f.log = a.Log().With("component", "workos")
+			f.issuer = cfg.issuer()
 			b.Set(clientKey{}, f.client)
 			b.Set(featureKey{}, f)
 			return nil

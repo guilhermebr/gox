@@ -48,18 +48,29 @@ func (f *feature) sdkPassword() string {
 // tokenClaims reads the claims the SDK's result does not carry, from an
 // access token the SDK has already verified.
 func tokenClaims(accessToken string) (subject string, featureFlags []string) {
+	c := peekClaims(accessToken)
+	return c.Sub, c.FeatureFlags
+}
+
+// peekedClaims are claims read from an access token without verifying it:
+// for what the session exposes after the SDK verified the token, and for
+// explaining in the logs why a token was refused.
+type peekedClaims struct {
+	Sub          string   `json:"sub"`
+	Iss          string   `json:"iss"`
+	FeatureFlags []string `json:"feature_flags"`
+}
+
+func peekClaims(accessToken string) peekedClaims {
+	var claims peekedClaims
 	parts := strings.Split(accessToken, ".")
 	if len(parts) != 3 {
-		return "", nil
+		return claims
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return "", nil
-	}
-	var claims struct {
-		Sub          string   `json:"sub"`
-		FeatureFlags []string `json:"feature_flags"`
+		return claims
 	}
 	_ = json.Unmarshal(raw, &claims)
-	return claims.Sub, claims.FeatureFlags
+	return claims
 }

@@ -3,6 +3,7 @@ package workos
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -66,8 +67,13 @@ func (f *feature) sessions(next http.Handler) http.Handler {
 		st := &state{f: f}
 		if token, ok := bearer(r); ok {
 			st.data = &sdk.SessionData{AccessToken: token}
-			if res := f.authenticate(r.Context(), st.data); res != nil && res.Authenticated {
+			res, err := f.authenticate(r.Context(), st.data)
+			if err == nil && res.Authenticated {
 				st.session = sessionOf(res, token)
+			} else if f.log.Enabled(r.Context(), slog.LevelDebug) {
+				// Debug: API callers with stale or foreign tokens are routine.
+				f.log.DebugContext(r.Context(), "workos bearer token rejected",
+					withErr([]any{"reason", reasonOf(res), "issuer", f.issuer, "token_issuer", peekClaims(token).Iss}, err)...)
 			}
 		} else if ck, err := r.Cookie(f.cfg.CookieName); err == nil && ck.Value != "" {
 			st.data, st.session = f.resolve(w, r, ck.Value)
@@ -79,46 +85,90 @@ func (f *feature) sessions(next http.Handler) http.Handler {
 // resolve turns a cookie into a session, refreshing an expired access token
 // once and clearing a cookie that can never authenticate again.
 func (f *feature) resolve(w http.ResponseWriter, r *http.Request, sealed string) (*sdk.SessionData, *Session) {
+	ctx := r.Context()
 	data, err := f.codec.Unseal(sealed, f.cfg.CookiePassword)
 	if err != nil || data == nil {
+		// A rotated WORKOS_COOKIE_PASSWORD or a tampered cookie.
+		f.log.WarnContext(ctx, "workos session cookie unreadable", withErr(nil, err)...)
 		f.clearCookie(w, r)
 		return nil, nil
 	}
-	res := f.authenticate(r.Context(), data)
-	if res != nil && res.NeedsRefresh {
-		fresh, err := f.refresh(r.Context(), data, "")
-		if err != nil {
-			if errors.Is(err, errRevoked) {
+	res, err := f.authenticate(ctx, data)
+	if err == nil && res.NeedsRefresh {
+		fresh, rerr := f.refresh(ctx, data, "")
+		if rerr != nil {
+			revoked := errors.Is(rerr, errRevoked)
+			level := slog.LevelWarn
+			if revoked {
+				level = slog.LevelInfo // the session ended at WorkOS: signed out elsewhere or expired
 				f.clearCookie(w, r)
 			}
+			f.log.Log(ctx, level, "workos session refresh failed", "revoked", revoked, "error", rerr)
 			return nil, nil // a transient failure keeps the cookie for the next request
 		}
-		if err := f.writeCookie(w, r, fresh); err != nil {
+		if werr := f.writeCookie(w, r, fresh); werr != nil {
+			f.log.WarnContext(ctx, "workos session cookie not written", "error", werr)
 			return nil, nil
 		}
-		data, res = fresh, f.authenticate(r.Context(), fresh)
+		data = fresh
+		res, err = f.authenticate(ctx, fresh)
 	}
-	if res == nil || !res.Authenticated {
-		if res != nil && !res.NeedsRefresh {
-			f.clearCookie(w, r)
+	if err != nil {
+		// The session could not be checked at all (sealing it for the SDK
+		// failed): keep the cookie for the next request. The SDK reports an
+		// unreachable JWKS as invalid_jwt, not as an error, so that case lands
+		// in "workos session rejected" below.
+		f.log.WarnContext(ctx, "workos session check failed", "error", err)
+		return nil, nil
+	}
+	if !res.Authenticated {
+		if res.NeedsRefresh {
+			// Only after a refresh that just succeeded: the fresh token is
+			// already expired here, usually a clock far off WorkOS's.
+			f.log.WarnContext(ctx, "workos session expired right after a refresh", "reason", res.Reason)
+			return nil, nil
 		}
+		// invalid_jwt here is usually a WORKOS_ISSUER that does not match the
+		// tokens' iss (set WORKOS_ISSUER to token_issuer); the cookie can never
+		// authenticate again.
+		f.log.WarnContext(ctx, "workos session rejected", "reason", res.Reason,
+			"issuer", f.issuer, "token_issuer", peekClaims(data.AccessToken).Iss)
+		f.clearCookie(w, r)
 		return nil, nil
 	}
 	return data, sessionOf(res, data.AccessToken)
 }
 
 // authenticate lets the SDK verify the access token (signature against the
-// cached JWKS, issuer, audience, expiry).
-func (f *feature) authenticate(ctx context.Context, data *sdk.SessionData) *sdk.AuthenticateSessionResult {
+// cached JWKS, issuer, audience, expiry). A nil error means res is set; a
+// token that fails verification is a result with Authenticated false and a
+// Reason, not an error.
+func (f *feature) authenticate(ctx context.Context, data *sdk.SessionData) (*sdk.AuthenticateSessionResult, error) {
 	sealed, err := sdk.SealSession(data, f.sdkPassword())
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	res, err := sdk.NewSession(f.client, sealed, f.sdkPassword(), sdk.WithSessionIssuer(f.cfg.Issuer)).AuthenticateContext(ctx)
+	res, err := sdk.NewSession(f.client, sealed, f.sdkPassword(), sdk.WithSessionIssuer(f.issuer)).AuthenticateContext(ctx)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return res
+	return res, nil
+}
+
+// withErr appends the error to log attributes when there is one.
+func withErr(attrs []any, err error) []any {
+	if err != nil {
+		return append(attrs, "error", err)
+	}
+	return attrs
+}
+
+// reasonOf is the SDK's reason for refusing a token, for the logs.
+func reasonOf(res *sdk.AuthenticateSessionResult) string {
+	if res == nil {
+		return ""
+	}
+	return res.Reason
 }
 
 var errRevoked = errors.New("workos: refresh token revoked")
@@ -213,8 +263,8 @@ func SwitchOrganization(w http.ResponseWriter, r *http.Request, organizationID s
 		}
 		return nil, gox.WrapError(err, gox.CodeUnavailable, "the identity provider is unavailable")
 	}
-	res := st.f.authenticate(r.Context(), fresh)
-	if res == nil || !res.Authenticated {
+	res, err := st.f.authenticate(r.Context(), fresh)
+	if err != nil || !res.Authenticated {
 		return nil, gox.Unauthenticated("the re-granted session could not be verified")
 	}
 	if err := st.f.writeCookie(w, r, fresh); err != nil {

@@ -64,5 +64,16 @@ func main() {
 `workos.From(a)` is the official SDK client for everything else (organizations,
 memberships, invitations, widgets). A service that shares its session cookie
 with an application on another WorkOS SDK plugs its layout in with
-`workos.WithSessionCodec`. Against an emulator set `SHOP_WORKOS_BASE_URL` and
-`SHOP_WORKOS_ISSUER`.
+`workos.WithSessionCodec`.
+
+Access tokens are verified against the issuer AuthKit signs with,
+`https://api.workos.com/user_management/<client id>` (the same path under
+`SHOP_WORKOS_BASE_URL` against an emulator), so a single-application AuthKit
+environment needs no `SHOP_WORKOS_ISSUER`. Set it to the tokens' exact `iss`
+when that differs: a custom auth domain, a non-default application of a
+multi-application environment (its tokens name the default application's
+client id), a `BASE_URL` that is a proxy rather than an emulator, or an
+environment that still issues `https://api.workos.com/` (the pre-v0.1.1
+default). A rejected session is logged at warn with the SDK's reason and both
+`issuer` and `token_issuer`; `invalid_jwt` with different values means
+`SHOP_WORKOS_ISSUER` should be `token_issuer`.

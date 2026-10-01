@@ -695,7 +695,7 @@ func VerifyWebhook(a *gox.App, r *http.Request) (*sdk.EventSchema, error)  // Ve
 <PREFIX>_WORKOS_COOKIE_MAX_AGE (duration, default 720h)
 <PREFIX>_WORKOS_SECURE_COOKIES (string, default auto): auto | true | false; auto is on in production or behind X-Forwarded-Proto https
 <PREFIX>_WORKOS_BASE_URL (string): API base URL; leave empty for api.workos.com (set it for an emulator)
-<PREFIX>_WORKOS_ISSUER (string, default https://api.workos.com/): trusted access-token issuer; change it for a custom auth domain or an emulator
+<PREFIX>_WORKOS_ISSUER (string): trusted access-token issuer; empty is <BASE_URL or https://api.workos.com>/user_management/<CLIENT_ID>; set it to the tokens' iss for a custom auth domain or a non-default application or https://api.workos.com/ for the old default
 <PREFIX>_WORKOS_WEBHOOK_SECRET (string, secret): signing secret of the webhook endpoint; required by workos.VerifyWebhook
 
 ## API: web

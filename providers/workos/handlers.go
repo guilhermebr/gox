@@ -100,7 +100,7 @@ func EndSession(w http.ResponseWriter, r *http.Request, returnTo string) string 
 	target := ""
 	if st.data != nil {
 		if sealed, err := sdk.SealSession(st.data, st.f.sdkPassword()); err == nil {
-			s := sdk.NewSession(st.f.client, sealed, st.f.sdkPassword(), sdk.WithSessionIssuer(st.f.cfg.Issuer))
+			s := sdk.NewSession(st.f.client, sealed, st.f.sdkPassword(), sdk.WithSessionIssuer(st.f.issuer))
 			if u, err := s.GetLogoutURL(r.Context(), returnTo); err == nil {
 				target = u
 			}

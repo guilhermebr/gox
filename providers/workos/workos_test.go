@@ -47,6 +47,9 @@ type fake struct {
 	refreshes atomic.Int32
 	ttl       time.Duration // lifetime of the next access tokens
 	lastOrg   string
+	iss       string       // iss claim of the access tokens it issues
+	envIssuer string       // SHOP_WORKOS_ISSUER for start; "" leaves the issuer to its default
+	log       *slog.Logger // the service's logger in start; quiet when nil
 }
 
 var (
@@ -57,7 +60,7 @@ var (
 func newFake(t *testing.T) *fake {
 	t.Helper()
 	keyOnce.Do(func() { testKey, _ = rsa.GenerateKey(rand.Reader, 2048) })
-	f := &fake{t: t, key: testKey, refresh: map[string]bool{}, ttl: time.Hour}
+	f := &fake{t: t, key: testKey, refresh: map[string]bool{}, ttl: time.Hour, iss: issuer, envIssuer: issuer}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /sso/jwks/"+clientID, func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
@@ -126,7 +129,7 @@ func (f *fake) newRefreshToken() string {
 
 func (f *fake) accessToken(org string, ttl time.Duration) string {
 	tok := gojwt.NewWithClaims(gojwt.SigningMethodRS256, gojwt.MapClaims{
-		"iss": issuer, "sub": "user_01", "sid": "session_01", "org_id": org, "role": "admin",
+		"iss": f.iss, "sub": "user_01", "sid": "session_01", "org_id": org, "role": "admin",
 		"permissions": []string{"invoices:read"}, "feature_flags": []string{"new-billing"}, "exp": time.Now().Add(ttl).Unix(),
 	})
 	tok.Header["kid"] = "k1"
@@ -174,9 +177,13 @@ func start(t *testing.T, f *fake, register func(a *gox.App), opts ...workos.Opti
 	t.Setenv("SHOP_WORKOS_COOKIE_PASSWORD", password)
 	t.Setenv("SHOP_WORKOS_REDIRECT_URI", "http://"+addr+"/auth/callback")
 	t.Setenv("SHOP_WORKOS_BASE_URL", f.srv.URL)
-	t.Setenv("SHOP_WORKOS_ISSUER", issuer)
+	t.Setenv("SHOP_WORKOS_ISSUER", f.envIssuer)
 	t.Setenv("SHOP_WORKOS_WEBHOOK_SECRET", "whsec_test")
-	a, err := gox.New("shop", gox.WithoutAdminServer(), gox.WithLogger(quiet()), gox.HTTP(),
+	log := f.log
+	if log == nil {
+		log = quiet()
+	}
+	a, err := gox.New("shop", gox.WithoutAdminServer(), gox.WithLogger(log), gox.HTTP(),
 		workos.Enable(append([]workos.Option{workos.WithSessions()}, opts...)...))
 	if err != nil {
 		t.Fatal(err)
@@ -594,5 +601,110 @@ func TestARequestStillHoldingTheConsumedRefreshTokenStaysAuthenticated(t *testin
 	}
 	if n := f.refreshes.Load(); n != 1 {
 		t.Fatalf("refresh grants = %d, want 1: the consumed token must not be exchanged again", n)
+	}
+}
+
+func TestTheIssuerDefaultsToTheAuthKitClientIssuer(t *testing.T) {
+	f := newFake(t)
+	// AuthKit signs access tokens as <API base>/user_management/<client id>.
+	f.iss = f.srv.URL + "/user_management/" + clientID
+	f.envIssuer = ""
+	base := start(t, f, nil)
+	c := browser(t)
+	if resp, body := get(t, c, base+"/me", "Authorization", "Bearer "+f.accessToken("org_1", time.Hour)); resp.StatusCode != http.StatusOK {
+		t.Fatalf("token from the client issuer, no WORKOS_ISSUER set = %d %s", resp.StatusCode, body)
+	}
+
+	setSessionCookie(c, base, f.sealed(time.Hour))
+	if resp, body := get(t, c, base+"/me"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("cookie from the client issuer, no WORKOS_ISSUER set = %d %s", resp.StatusCode, body)
+	}
+	resp, _ := get(t, c, base+"/auth/logout")
+	if resp.StatusCode != http.StatusSeeOther || !strings.Contains(resp.Header.Get("Location"), "/user_management/sessions/logout?session_id=session_01") {
+		t.Fatalf("logout with the default issuer must end the WorkOS session: %d %s", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	f.iss = "https://api.workos.com/"
+	if resp, _ := get(t, c, base+"/me", "Authorization", "Bearer "+f.accessToken("org_1", time.Hour)); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("token from another issuer = %d, want 401", resp.StatusCode)
+	}
+}
+
+// syncBuffer is a log sink the server goroutines and the test share.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+// record returns the first JSON log record whose msg is msg, or nil.
+func (s *syncBuffer) record(msg string) map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, line := range strings.Split(s.b.String(), "\n") {
+		var rec map[string]any
+		if json.Unmarshal([]byte(line), &rec) == nil && rec["msg"] == msg {
+			return rec
+		}
+	}
+	return nil
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+func jsonLogger(w io.Writer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+func TestRejectedSessionsSayWhyInTheLog(t *testing.T) {
+	f := newFake(t)
+	logs := &syncBuffer{}
+	f.log = jsonLogger(logs)
+	f.envIssuer = "https://another-issuer.test/" // a misconfigured issuer: every token is rejected
+	base := start(t, f, nil)
+
+	c := browser(t)
+	setSessionCookie(c, base, f.sealed(time.Hour))
+	if resp, _ := get(t, c, base+"/me"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("cookie from another issuer = %d", resp.StatusCode)
+	}
+	rec := logs.record("workos session rejected")
+	if rec == nil || rec["level"] != "WARN" || rec["reason"] != "invalid_jwt" || rec["issuer"] != "https://another-issuer.test/" || rec["token_issuer"] != issuer || rec["component"] != "workos" {
+		t.Fatalf("a rejected session cookie must be a warning naming the reason and both issuers, got %v\n%s", rec, logs.String())
+	}
+
+	setSessionCookie(c, base, "garbage")
+	_, _ = get(t, c, base+"/public")
+	if rec := logs.record("workos session cookie unreadable"); rec == nil || rec["level"] != "WARN" {
+		t.Fatalf("an unreadable cookie must be a warning, got %v", rec)
+	}
+
+	_, _ = get(t, browser(t), base+"/me", "Authorization", "Bearer "+f.accessToken("org_1", time.Hour))
+	if rec := logs.record("workos bearer token rejected"); rec == nil || rec["level"] != "DEBUG" || rec["reason"] != "invalid_jwt" {
+		t.Fatalf("a rejected bearer token must be a debug record with its reason, got %v", rec)
+	}
+}
+
+func TestAFailedRefreshIsLogged(t *testing.T) {
+	f := newFake(t)
+	logs := &syncBuffer{}
+	f.log = jsonLogger(logs)
+	base := start(t, f, nil)
+
+	c := browser(t)
+	revoked, _ := sdk.SealSession(&sdk.SessionData{AccessToken: f.accessToken("org_1", -time.Minute), RefreshToken: "rt_never_issued"}, password)
+	setSessionCookie(c, base, revoked)
+	_, _ = get(t, c, base+"/me")
+	if rec := logs.record("workos session refresh failed"); rec == nil || rec["level"] != "INFO" || rec["revoked"] != true {
+		t.Fatalf("a revoked refresh must be an info record with revoked=true, got %v", rec)
 	}
 }
