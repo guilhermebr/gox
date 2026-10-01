@@ -49,10 +49,8 @@ require (
 
 require (
 	github.com/golang-migrate/migrate/v4 v4.20.1
-	github.com/guilhermebr/gox v0.0.0
+	github.com/guilhermebr/gox v0.1.0
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
 )
-
-replace github.com/guilhermebr/gox => ../
