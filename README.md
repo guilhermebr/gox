@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/guilhermebr/gox.svg)](https://pkg.go.dev/github.com/guilhermebr/gox)
 
-gox is an opinionated Go service framework. Adopt it and stop deciding which
+Go(x) is an opinionated Go service framework. Adopt it and stop deciding which
 logger, router, config loader, database driver, or observability stack to
 use: every service on gox looks the same, starts the same, shuts down the
 same, and shows up the same on dashboards.
