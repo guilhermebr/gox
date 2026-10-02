@@ -38,6 +38,7 @@ func TestConfigNamesWhatIsWrong(t *testing.T) {
 		"S3_SECRET_ACCESS_KEY": {"SHOP_S3_BUCKET": "b", "SHOP_S3_ACCESS_KEY_ID": "AKIA"},
 		"S3_PATH_STYLE":        {"SHOP_S3_BUCKET": "b", "SHOP_S3_PATH_STYLE": "maybe"},
 		"S3_PRESIGN_EXPIRY":    {"SHOP_S3_BUCKET": "b", "SHOP_S3_PRESIGN_EXPIRY": "200h"},
+		"S3_COMPAT":            {"SHOP_S3_BUCKET": "b", "SHOP_S3_COMPAT": "r2"},
 	}
 	for want, env := range cases {
 		t.Run(want, func(t *testing.T) {

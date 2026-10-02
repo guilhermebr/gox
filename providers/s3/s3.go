@@ -48,6 +48,9 @@ func Enable() gox.Option {
 				if cfg.Endpoint != "" {
 					o.BaseEndpoint = aws.String(cfg.Endpoint)
 				}
+				if cfg.GCS() {
+					gcsOptions(o)
+				}
 			})
 			bk := &bucket{cfg: cfg, client: client, presign: awss3.NewPresignClient(client)}
 			b.Set(key{}, storage.Bucket(bk))

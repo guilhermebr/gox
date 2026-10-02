@@ -584,7 +584,8 @@ func From(a *gox.App) sdk.Client  // From returns the PostHog client: Enqueue fo
 import "github.com/guilhermebr/gox/providers/s3"
 
 ```go
-type Config struct{ Bucket string; Region string; Endpoint string; PathStyle string; AccessKeyID string; SecretAccessKey string; PresignExpiry time.Duration }  // Config is the S3 config section: BILLING_S3_* under a service prefixed BILLING.
+type Config struct{ Bucket string; Region string; Endpoint string; PathStyle string; AccessKeyID string; SecretAccessKey string; PresignExpiry time.Duration; Compat string }  // Config is the S3 config section: BILLING_S3_* under a service prefixed BILLING.
+func (c *Config) GCS() bool  // GCS reports whether the bucket is Google Cloud Storage, whose XML API checks signatures differently from S3 (see gcs.go).
 func (c *Config) Validate() error  // Validate checks the section after loading.
 func Enable() gox.Option  // Enable declares the bucket: it registers the S3 config section and a component that checks at boot that the bucket is reachable with the configured credentials (a typo fails the start, not the first upload) and keeps reporting it through /readyz.
 func From(a *gox.App) storage.Bucket  // From returns the bucket.
@@ -599,6 +600,7 @@ func From(a *gox.App) storage.Bucket  // From returns the bucket.
 <PREFIX>_S3_ACCESS_KEY_ID (string): static credentials; leave empty for the AWS default chain (environment or instance role)
 <PREFIX>_S3_SECRET_ACCESS_KEY (string, secret)
 <PREFIX>_S3_PRESIGN_EXPIRY (duration, default 15m): lifetime of presigned URLs when a call sets none; at most 168h
+<PREFIX>_S3_COMPAT (string, default auto): auto | s3 | gcs; gcs signs requests the way Google Cloud Storage checks them; auto picks gcs when ENDPOINT is storage.googleapis.com
 
 ## API: stripe
 

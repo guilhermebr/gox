@@ -89,8 +89,8 @@ root version that is not fetchable yet:
    module. `make ci` runs under `go.work` and will pass either way, so it
    cannot tell you whether a tag works.
 
-Released so far: root, `jwt`, `postgres`, `jobs`, `openapi`, `providers/s3`,
-`providers/temporal` at `v0.1.0`; `providers/workos` at `v0.1.2`. The rest still
+Released so far: root, `jwt`, `postgres`, `jobs`, `openapi`,
+`providers/temporal` at `v0.1.0`; `providers/s3` at `v0.1.1`; `providers/workos` at `v0.1.2`. The rest still
 carry `v0.0.0` and a local `replace`; they are unreleased, and the first
 consumer to need one triggers the steps above.
 
