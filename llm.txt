@@ -575,7 +575,7 @@ func From(a *gox.App) sdk.Client  // From returns the PostHog client: Enqueue fo
 
 ## Config: posthog (declared by posthog.Enable())
 
-<PREFIX>_POSTHOG_PROJECT_KEY (string, required): project API key (phc_...); it is public and also used by the browser SDK
+<PREFIX>_POSTHOG_PROJECT_KEY (string): project API key (phc_...); it is public and also used by the browser SDK; empty turns the client off and events are dropped
 <PREFIX>_POSTHOG_HOST (string, default https://us.i.posthog.com): ingestion host; https://eu.i.posthog.com for the EU or your own
 <PREFIX>_POSTHOG_SECRET_KEY (string, secret): secret key for evaluating feature flags locally; optional
 

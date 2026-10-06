@@ -16,6 +16,8 @@ import (
 func main() {
 	// SHOP_POSTHOG_PROJECT_KEY (phc_...); SHOP_POSTHOG_HOST for the EU or a
 	// self-hosted instance; SHOP_POSTHOG_SECRET_KEY to evaluate flags locally.
+	// Without a project key the client is off: Enqueue drops the event
+	// (sdk.ErrSDKDisabled) and flags answer false, so development needs none.
 	a := gox.MustNew("shop", gox.HTTP(), posthog.Enable())
 
 	a.HandleFunc("POST /invoices/{id}/pay", func(w http.ResponseWriter, r *http.Request) {
