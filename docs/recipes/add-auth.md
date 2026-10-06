@@ -66,4 +66,45 @@ func main() {
 }
 ```
 
-API keys or opaque tokens: `gox.WithAuth(middleware.Bearer(validate))` from `github.com/guilhermebr/gox/pkg/middleware`, where `validate(ctx, token) (principal any, err error)` looks the token up; read the principal with `middleware.Principal(ctx)`.
+API keys or opaque tokens: `middleware.Bearer(validate)` from `github.com/guilhermebr/gox/pkg/middleware`, where `validate(ctx, token) (principal any, err error)` looks the token up; read the principal with `middleware.Principal(ctx)`. It exempts no path: wrap the handlers that need it, as below. Passed to `gox.WithAuth` it would also answer 401 on `/healthz` and `/readyz`, so such a wrapper must let those two through first, as `jwt.WithAuth()` does.
+
+```go path=apikey/main.go
+package main
+
+import (
+	"context"
+	"crypto/subtle"
+	"errors"
+	"net/http"
+	"os"
+
+	"github.com/guilhermebr/gox"
+	"github.com/guilhermebr/gox/pkg/middleware"
+)
+
+// Config holds the one key this service accepts (BILLING_API_KEY); with
+// many keys, validate looks them up in a table instead.
+type Config struct {
+	gox.BaseConfig
+	APIKey string `conf:"required,mask"`
+}
+
+func main() {
+	var cfg Config
+	a := gox.MustNew("billing", gox.WithConfig(&cfg), gox.HTTP())
+	auth := middleware.Bearer(func(_ context.Context, key string) (any, error) {
+		if subtle.ConstantTimeCompare([]byte(key), []byte(cfg.APIKey)) != 1 {
+			return nil, errors.New("unknown API key") // debug log only; the client gets 401
+		}
+		return "partner", nil // the principal: who the key belongs to
+	})
+
+	a.Mux().Handle("GET /reports", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = gox.JSON(w, http.StatusOK, map[string]any{"caller": middleware.Principal(r.Context())})
+	})))
+
+	if err := a.Run(); err != nil {
+		os.Exit(1)
+	}
+}
+```

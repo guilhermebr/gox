@@ -39,9 +39,11 @@ func Routes(a *gox.App) {
 	})
 }
 
-// Sync is the workers' periodic job.
-func Sync(cfg *Config) gox.Option {
-	return gox.Periodic("sync", cfg.SyncEvery, func(ctx context.Context) error {
+// Sync is the workers' periodic job. gox.Periodic takes its interval when
+// the option list is built, before New loads config, so the caller reads
+// it first with gox.LoadConfig (see the mains below).
+func Sync(every time.Duration) gox.Option {
+	return gox.Periodic("sync", every, func(ctx context.Context) error {
 		slog.InfoContext(ctx, "syncing")
 		return nil
 	})
@@ -74,6 +76,7 @@ package main
 
 import (
 	"os"
+	"time"
 
 	"github.com/guilhermebr/gox"
 
@@ -82,9 +85,16 @@ import (
 
 func main() {
 	var cfg app.Config
+	// Do not exit when LoadConfig fails: it also fails for --help and
+	// --version, and MustNew loads the same struct, prints why and exits.
+	// The placeholder never runs; it must be above zero.
+	every := 5 * time.Minute
+	if err := gox.LoadConfig("billing", &cfg); err == nil {
+		every = cfg.SyncEvery
+	}
 	// Same prefix (BILLING_*), same Postgres section, no HTTP server; the
 	// admin server still serves /readyz and /metrics for this binary.
-	a := gox.MustNew("billing", append(app.Base(&cfg), app.Sync(&cfg))...)
+	a := gox.MustNew("billing", append(app.Base(&cfg), app.Sync(every))...)
 	if err := a.Run(); err != nil {
 		os.Exit(1)
 	}
@@ -93,13 +103,15 @@ func main() {
 
 One binary that picks its role from the environment uses the same wiring:
 `gox.LoadConfig` reads the struct `New` will load, so the role can decide the
-option list before the app exists.
+option list before the app exists. Never exit on its error (`--help` returns
+one too): `MustNew` loads the same struct, then prints the help or the error.
 
 ```go path=cmd/shop/main.go
 package main
 
 import (
 	"os"
+	"time"
 
 	"github.com/guilhermebr/gox"
 
@@ -108,15 +120,16 @@ import (
 
 func main() {
 	var cfg app.Config
-	if err := gox.LoadConfig("billing", &cfg); err != nil {
-		os.Exit(1)
+	every := 5 * time.Minute // placeholder, as in cmd/worker
+	if err := gox.LoadConfig("billing", &cfg); err == nil {
+		every = cfg.SyncEvery
 	}
 	opts := app.Base(&cfg)
 	if cfg.Role == "all" || cfg.Role == "api" {
 		opts = append(opts, gox.HTTP())
 	}
 	if cfg.Role == "all" || cfg.Role == "worker" {
-		opts = append(opts, app.Sync(&cfg))
+		opts = append(opts, app.Sync(every))
 	}
 	a := gox.MustNew("billing", opts...)
 	if a.HasHTTP() {

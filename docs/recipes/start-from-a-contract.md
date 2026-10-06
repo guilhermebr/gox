@@ -124,9 +124,8 @@ import (
 type handler struct{}
 
 // Register mounts the contract's operations. Every pattern repeats the
-// /api/v1 prefix the document declares under servers: the mux decides what
-// exists, and a pattern that does not match what the document describes is a
-// 404 before validation ever runs.
+// /api/v1 prefix the document declares under servers: clients built from the
+// document call those URLs, and the mux decides what exists.
 func Register(a *gox.App) {
 	h := &handler{}
 	a.HandleFunc("POST /api/v1/invoices", h.createInvoice)
@@ -212,12 +211,13 @@ func main() {
 ## The mistake to avoid
 
 A `servers` entry with a path — `url: /api/v1` — is part of every route the
-document describes. `openapi.Enable` resolves requests against the document
-including that prefix, so a handler registered on `POST /invoices` while the
-contract describes `/api/v1/invoices` is never validated **and** never reached:
-the mux answers 404 first, and the contract looks like it is being ignored.
-Register `POST /api/v1/invoices`. Routes the document does not describe, such
-as `/healthz` or a webhook, pass through untouched and need no entry.
+document describes, so clients built from it call `/api/v1/invoices`. Register
+`POST /api/v1/invoices`. Validation matches a request with or without that
+prefix and runs before the mux, so a handler registered on `POST /invoices`
+still works at `/invoices`, while the contract's own URL passes validation and
+then gets a 404 from the mux (a 405 here, because `GET /api/v1/invoices`
+exists). Routes the document does not describe, such as `/healthz` or a
+webhook, pass through untouched and need no entry.
 
 ## Keeping it in step
 
