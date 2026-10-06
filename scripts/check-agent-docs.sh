@@ -8,9 +8,9 @@
 # its budget or sits where it would load into the wrong session, when a
 # CLAUDE.md exists (it can stop AGENTS.md from loading), when a path it names
 # does not exist, when the recipe or ADR index and its directory disagree, or
-# when a skill's name differs from its directory or its description is
-# missing or over 1024 characters, or when the golangci-lint version AGENTS.md
-# names differs from the CI pin.
+# when a skill's name differs from its directory or its one-line description
+# is missing, over 1024 characters or not a plain YAML scalar, or when the
+# golangci-lint version AGENTS.md names differs from the CI pin.
 #
 # A path is a name with a / that ends in .md or .md.tmpl (a <placeholder> is
 # not one), resolved from the repo root or from the naming file's directory.
@@ -107,13 +107,12 @@ for f in $(files -name SKILL.md -o -name SKILL.md.tmpl); do
 	[ "$lines" -le 200 ] || bad "$f is $lines lines, over the 200-line budget: point to a recipe or doc instead of copying it"
 	dir=$(basename "$(dirname "$f")")
 	front=$(awk 'NR == 1 { if ($0 != "---") exit; next } $0 == "---" { exit } { print }' "$f")
-	name=$(awk '/^name:/ { print $2 }' <<<"$front" | tr -d "\"'")
-	desc=$(awk '/^[^[:space:]]/ { on = sub(/^description:[[:space:]]*([>|][-+]?)?/, "") } on' <<<"$front" | tr -s '[:space:]' ' ')
-	desc=${desc# } desc=${desc% } desc=${desc#[\"\']} desc=${desc%[\"\']}
-	chars=$(printf %s "$desc" | LC_ALL=C tr -d '\200-\277' | wc -c | tr -d ' ') # UTF-8 continuation bytes are not characters
+	name=$(sed -n 's/^name: //p' <<<"$front")
+	desc=$(sed -n 's/^description: //p' <<<"$front")
 	[ "$name" = "$dir" ] || bad "$f: frontmatter name is '$name': set 'name: $dir' between --- lines at the top"
-	[ -n "$desc" ] || bad "$f: frontmatter has no description: add one that says what the skill does and when to use it"
-	[ "$chars" -le 1024 ] || bad "$f: description is $chars characters: cut it to 1024"
+	[ -n "$desc" ] || bad "$f: frontmatter has no one-line description: add one that says what the skill does and when to use it"
+	[ "${#desc}" -le 1024 ] || bad "$f: description is ${#desc} characters: cut it to 1024"
+	case $desc in *': '* | *' #'*) bad "$f: description contains ': ' or ' #', which breaks the plain YAML scalar: reword it" ;; esac
 done
 
 # Lint version: AGENTS.md tells agents which golangci-lint to install; CI's

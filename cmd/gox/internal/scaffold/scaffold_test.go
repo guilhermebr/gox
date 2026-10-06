@@ -129,8 +129,8 @@ func TestAgentGuidancePerVariant(t *testing.T) {
 			}
 
 			agents := files["AGENTS.md"]
-			if len(agents) > 6144 {
-				t.Errorf("AGENTS.md is %d bytes, over the 6144-byte budget: move task detail into a skill", len(agents))
+			if len(agents) > 4096 {
+				t.Errorf("AGENTS.md is %d bytes, over the 4096-byte budget: move task detail into a skill", len(agents))
 			}
 			// The go list format string is the one intended pair of braces.
 			if bad := unrendered(strings.ReplaceAll(agents, "-f '{{.Dir}}'", "")); bad != "" {
@@ -153,13 +153,12 @@ func TestAgentGuidancePerVariant(t *testing.T) {
 				if !ok {
 					continue
 				}
-				name, file, _ := strings.Cut(rest, "/")
-				if file != "SKILL.md" {
-					t.Errorf("%s: a skill directory holds only SKILL.md", p)
-					continue
-				}
+				// scripts/check-agent-docs.sh checks the frontmatter on the templates.
+				name, _, _ := strings.Cut(rest, "/")
 				skills = append(skills, name)
-				checkSkill(t, p, name, content)
+				if bad := unrendered(content); bad != "" {
+					t.Errorf("%s contains %q: render it with the service's own name and prefix", p, bad)
+				}
 				if !strings.Contains(agents, ".claude/skills/"+name+"/SKILL.md") {
 					t.Errorf("AGENTS.md does not route any task to %s", p)
 				}
@@ -169,39 +168,6 @@ func TestAgentGuidancePerVariant(t *testing.T) {
 				t.Errorf("skills = %v, want %v", skills, v.skills)
 			}
 		})
-	}
-}
-
-// checkSkill holds a rendered skill to what Claude Code needs: frontmatter
-// whose name is the directory, a one-line description YAML reads as plain
-// text, and a body short enough to load whole.
-func checkSkill(t *testing.T, path, dir, content string) {
-	t.Helper()
-	front, body, ok := strings.Cut(strings.TrimPrefix(content, "---\n"), "\n---\n")
-	if !strings.HasPrefix(content, "---\n") || !ok {
-		t.Errorf("%s: must start with a --- frontmatter block", path)
-		return
-	}
-	fields := map[string]string{}
-	for line := range strings.Lines(front) {
-		k, val, _ := strings.Cut(strings.TrimSuffix(line, "\n"), ": ")
-		fields[k] = val
-	}
-	if fields["name"] != dir {
-		t.Errorf("%s: frontmatter name %q must equal its directory %q", path, fields["name"], dir)
-	}
-	desc := fields["description"]
-	if desc == "" || len(desc) > 1024 {
-		t.Errorf("%s: description is %d characters; it must be 1-1024", path, len(desc))
-	}
-	if strings.Contains(desc, ": ") || strings.Contains(desc, " #") {
-		t.Errorf("%s: description contains \": \" or \" #\", which breaks the plain YAML scalar", path)
-	}
-	if n := strings.Count(body, "\n"); n > 200 {
-		t.Errorf("%s: body is %d lines, over the 200-line budget", path, n)
-	}
-	if bad := unrendered(content); bad != "" {
-		t.Errorf("%s: contains %q: render it with the service's own name and prefix", path, bad)
 	}
 }
 

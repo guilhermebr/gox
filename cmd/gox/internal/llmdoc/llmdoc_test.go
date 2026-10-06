@@ -80,55 +80,13 @@ func TestAPIListsExportedDeclarationsWithFirstSentence(t *testing.T) {
 		"const KindA, KindB Kind  // Kinds.",
 		"type Alias = Config  // Alias is Config under another name.",
 		"type Config struct{ URL string; MaxConns int32; Timeout time.Duration; Legacy string; HTTPClient struct{ Timeout time.Duration } }  // Config is the FIXTURE section.",
-	} {
-		if !strings.Contains(api, want) {
-			t.Errorf("api lacks %q:\n%s", want, api)
-		}
-	}
-	if strings.Contains(api, "unexported") || strings.Contains(api, "Second sentence") {
-		t.Fatalf("api leaked unexported or extra prose:\n%s", api)
-	}
-}
-
-func TestAPIFirstSentenceEndsAtTheEarliestPeriod(t *testing.T) {
-	api, err := llmdoc.API(fixture())
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "func Wrapped()  // Wrapped ends its first sentence at a line break.\n"
-	if !strings.Contains(api, want) {
-		t.Fatalf("api lacks %q:\n%s", want, api)
-	}
-}
-
-func TestAPIShowsTheDeprecationInsteadOfTheFirstSentence(t *testing.T) {
-	api, err := llmdoc.API(fixture())
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "func Old()  // Deprecated: use Enable and From.\n"
-	if !strings.Contains(api, want) {
-		t.Fatalf("api lacks %q:\n%s", want, api)
-	}
-}
-
-func TestAPIRendersInterfacesWithoutMethodComments(t *testing.T) {
-	api, err := llmdoc.API(fixture())
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "type Store interface{ Put(ctx context.Context, key string) error; Get(key string) (string, error) }  // Store is an interface whose method comments stay out of llm.txt.\n"
-	if !strings.Contains(api, want) {
-		t.Fatalf("api lacks %q:\n%s", want, api)
-	}
-}
-
-func TestAPIExpandsAliasesOfTypesInsideTheModule(t *testing.T) {
-	api, err := llmdoc.API(fixture())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
+		// The first sentence ends at the earliest period, even at a line break.
+		"func Wrapped()  // Wrapped ends its first sentence at a line break.\n",
+		// A Deprecated: paragraph replaces the first sentence.
+		"func Old()  // Deprecated: use Enable and From.\n",
+		// Interfaces leave their method comments out.
+		"type Store interface{ Put(ctx context.Context, key string) error; Get(key string) (string, error) }  // Store is an interface whose method comments stay out of llm.txt.\n",
+		// Aliases of types inside the module show fields or signatures; others stay aliases.
 		"type Options struct{ Name string; Nested sub.Inner; Pointer *sub.Inner; Every time.Duration }  // Options is sub.Options, shown with its fields.\n",
 		"type Handler = func(name string, in sub.Inner) error  // Handler is sub.Handler, shown with its signature.\n",
 		"type Level = sub.Level  // Level is sub.Level, left as an alias.\n",
@@ -136,6 +94,9 @@ func TestAPIExpandsAliasesOfTypesInsideTheModule(t *testing.T) {
 		if !strings.Contains(api, want) {
 			t.Errorf("api lacks %q:\n%s", want, api)
 		}
+	}
+	if strings.Contains(api, "unexported") || strings.Contains(api, "Second sentence") {
+		t.Fatalf("api leaked unexported or extra prose:\n%s", api)
 	}
 }
 
