@@ -2,6 +2,7 @@
 
 Date: 2026-09-19
 Status: accepted
+Amended: see the Notes of row 0010 in [README.md](README.md); the code wins.
 
 ## Context
 
@@ -29,7 +30,8 @@ and nothing fails until a client breaks.
   shape, problem details included.
 - Responses are not validated in production traffic; that belongs in tests.
 - The module does not generate code. `oapi-codegen`'s `std-http-server`
-  target already emits handlers for `net/http`'s mux; the recipe shows it.
+  target already emits handlers for `net/http`'s mux. The generation recipe,
+  `docs/recipes/start-from-a-contract.md`, uses its types only (see Notes).
 
 ## Consequences
 

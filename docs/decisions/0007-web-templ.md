@@ -2,6 +2,7 @@
 
 Date: 2026-09-13
 Status: accepted
+Amended: see the Notes of row 0007 in [README.md](README.md); the code wins.
 
 ## Context
 
@@ -23,9 +24,10 @@ structure.
 ### Stack (fixed)
 
 templ (CLI pinned to go.mod), Alpine.js as the primary interactivity layer,
-HTMX 2.x pinned for server interactions, Tailwind v4 standalone CLI with
-committed output, embedded assets with content-hashed URLs. Alpine and HTMX
-are vendored by the scaffold's Makefile; the framework ships no JavaScript.
+HTMX 2.x pinned for server interactions, plain CSS with no build step (the
+scaffold ships `static/css/app.css`), embedded assets with content-hashed
+URLs. Alpine and HTMX are vendored by the scaffold's Makefile; the framework
+ships no JavaScript.
 
 ### API
 
@@ -48,7 +50,7 @@ func WithStatic(fsys fs.FS) Option                        // embed.FS rooted at 
 func WithSessions() Option                                // signed+encrypted cookie sessions; CSRF on for non-GET
 func WithLayout(l Layout) Option                          // one shell; Page carries the variant
 func WithErrorPage(p ErrorPage) Option                     // one function for every status; the default is a minimal page
-func WithBackend() Option                                 // enables API(r); needs gox.HTTPClient() and WEB_BACKEND_URL
+func WithBackend() Option                                 // enables APIFrom(r); needs gox.HTTPClient() and WEB_BACKEND_URL
 
 type Layout func(page *Page, body templ.Component) templ.Component
 type ErrorPage func(page *Page, status int, code, message string) templ.Component

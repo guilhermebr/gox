@@ -2,6 +2,7 @@
 
 Date: 2026-09-13
 Status: accepted
+Amended: see the Notes of row 0006 in [README.md](README.md); the code wins.
 
 ## Context
 
@@ -16,7 +17,7 @@ but would be new to every consumer.
 ## Decision
 
 - `golang-migrate/migrate/v4` with the `iofs` source and the `pgx/v5`
-  database driver. Migration files are `NNNN_name.up.sql` / `.down.sql`,
+  database driver. Migration files are `NNNNNN_name.up.sql` / `.down.sql`,
   embedded with `//go:embed migrations/*.sql` and passed to
   `postgres.WithMigrations(fs)`. The runner finds the directory inside the
   embed automatically.

@@ -2,6 +2,7 @@
 
 Date: 2026-09-20
 Status: accepted
+Amended: see the Notes of row 0013 in [README.md](README.md); the code wins.
 
 ## Context
 
