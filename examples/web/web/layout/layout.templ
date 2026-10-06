@@ -1,4 +1,5 @@
-package views
+// Package layout is the page shell every page renders in.
+package layout
 
 import (
 	"fmt"
@@ -9,16 +10,16 @@ import (
 // Layout is the one shell every page renders in. It takes the request's
 // Page and the body; pages never build <html> themselves.
 func Layout(page *web.Page, body templ.Component) templ.Component {
-	return layout(page, body)
+	return shell(page, body)
 }
 
-templ layout(page *web.Page, body templ.Component) {
+templ shell(page *web.Page, body templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ page.Title } · gox web example</title>
+			<title>{ page.Title }</title>
 			@web.CSRFMeta(page)
 			<link rel="stylesheet" href={ page.Asset("css/app.css") }/>
 		</head>
@@ -37,13 +38,14 @@ templ layout(page *web.Page, body templ.Component) {
 	</html>
 }
 
-// ErrorPage renders framework and handler errors for browser requests.
+// ErrorPage renders framework and handler errors for browser requests. It
+// returns a body fragment; gox wraps it in Layout.
 func ErrorPage(page *web.Page, status int, code, message string) templ.Component {
 	page.Title = fmt.Sprint(status)
-	return errorPage(status, message)
+	return errorBody(status, message)
 }
 
-templ errorPage(status int, message string) {
+templ errorBody(status int, message string) {
 	<section class="error">
 		<h1>{ fmt.Sprint(status) }</h1>
 		<p>{ message }</p>
