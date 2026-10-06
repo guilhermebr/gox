@@ -90,7 +90,7 @@ root version that is not fetchable yet:
    cannot tell you whether a tag works.
 
 Released so far: root, `jwt`, `postgres`, `jobs`, `openapi`,
-`providers/temporal` at `v0.1.0`; `providers/s3` at `v0.1.1`; `providers/workos` at `v0.1.2`. The rest still
+`providers/temporal`, `providers/posthog` at `v0.1.0`; `providers/s3` at `v0.1.1`; `providers/workos` at `v0.1.2`. The rest still
 carry `v0.0.0` and a local `replace`; they are unreleased, and the first
 consumer to need one triggers the steps above.
 

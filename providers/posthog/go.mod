@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/providers/posthog
 go 1.26
 
 require (
-	github.com/guilhermebr/gox v0.0.0
+	github.com/guilhermebr/gox v0.1.0
 	github.com/posthog/posthog-go v1.25.2
 )
 
@@ -49,5 +49,3 @@ require (
 	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-replace github.com/guilhermebr/gox => ../../
