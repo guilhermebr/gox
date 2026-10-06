@@ -53,29 +53,14 @@ cd - && go work use ./<dir>
 
 ## 3. Write the code
 
-`docs/features.md` walks through every piece. Models in the tree:
-`providers/stripe` (a value, `b.Setup`), `providers/posthog` (a lifecycle,
-`b.Component`), `providers/s3` (Start and Ready check the bucket),
-`postgres` (options, readiness, migrations).
+`docs/features.md` walks through every piece (Config, Validate, Enable and
+the `Builder` hooks, `From`, Start and Ready); the root AGENTS.md rules apply.
+Models in the tree: `providers/stripe` (a value, `b.Setup`),
+`providers/posthog` (a lifecycle, `b.Component`), `providers/s3` (Start and
+Ready check the bucket), `postgres` (options, readiness, migrations).
 
-- A package comment and a doc comment on every exported identifier; lint
-  fails without them.
-- `Config` with `conf` tags: defaults in tags, `required` when there is no
-  safe default, `mask` on secrets, `help:` text without commas (use `;`).
-- `func (c *Config) Validate() error` for what tags cannot check. Name the
-  variable without the service prefix, which the section does not know:
-  `STRIPE_BASE_URL must be an absolute http(s) URL`.
-- `Enable(opts ...Option) gox.Option` (`Enable() gox.Option` without
-  options) calls `b.ConfigSection("<NAME>", cfg, "<name>.Enable()")` and the
-  hooks it needs: `b.Setup` (a value), `b.Component(stage, factory)` (starts
-  and stops), `b.Finish` (decorates another feature's output),
-  `b.Middleware`, `b.ErrorRenderer`. Store what `From` returns with
-  `b.Set(key{}, v)`, where `key` is an unexported type.
-- `From(a *gox.App) T` is `gox.MustValue[T](a, key{}, "<name>.From", "<name>.Enable()")`.
-- A component's `Start` checks the connection so a bad address fails the
-  boot; a `Ready(ctx) error` method puts it in `/readyz`.
-- A value owned by another module arrives as a function argument
-  (`jobs.Enable(postgres.From)`, ADR 0011). Never import the module.
+A value owned by another module arrives as a function argument
+(`jobs.Enable(postgres.From)`, ADR 0011). Never import the module.
 
 ## 4. Test through a real gox.New
 
