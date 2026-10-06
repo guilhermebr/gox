@@ -130,6 +130,10 @@ make ci                           # what CI runs; must be green
 cd <dir> && GOWORK=off go build ./... && GOWORK=off go test ./...
 ```
 
+`make ci` lints every module and takes minutes: run it in the foreground
+with a long timeout (10 minutes), never in the background, and read its
+result before you report done.
+
 `make ci` runs under go.work, so it passes even when the module cannot
 build for a consumer. The last line builds against the root tag go.mod
 requires. `undefined: gox.<Name>` there, or `does not contain package` from
