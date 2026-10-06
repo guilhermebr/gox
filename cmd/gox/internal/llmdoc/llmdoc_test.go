@@ -61,8 +61,12 @@ func TestEnvVarsFromStructTags(t *testing.T) {
 	}
 }
 
+func fixture() llmdoc.Package {
+	return llmdoc.Package{Title: "fixture", ImportPath: "github.com/example/fixture", Dir: "testdata/fixture"}
+}
+
 func TestAPIListsExportedDeclarationsWithFirstSentence(t *testing.T) {
-	api, err := llmdoc.API("testdata/fixture", "github.com/example/fixture")
+	api, err := llmdoc.API(fixture())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +87,106 @@ func TestAPIListsExportedDeclarationsWithFirstSentence(t *testing.T) {
 	}
 	if strings.Contains(api, "unexported") || strings.Contains(api, "Second sentence") {
 		t.Fatalf("api leaked unexported or extra prose:\n%s", api)
+	}
+}
+
+func TestAPIFirstSentenceEndsAtTheEarliestPeriod(t *testing.T) {
+	api, err := llmdoc.API(fixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "func Wrapped()  // Wrapped ends its first sentence at a line break.\n"
+	if !strings.Contains(api, want) {
+		t.Fatalf("api lacks %q:\n%s", want, api)
+	}
+}
+
+func TestAPIShowsTheDeprecationInsteadOfTheFirstSentence(t *testing.T) {
+	api, err := llmdoc.API(fixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "func Old()  // Deprecated: use Enable and From.\n"
+	if !strings.Contains(api, want) {
+		t.Fatalf("api lacks %q:\n%s", want, api)
+	}
+}
+
+func TestAPIRendersInterfacesWithoutMethodComments(t *testing.T) {
+	api, err := llmdoc.API(fixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "type Store interface{ Put(ctx context.Context, key string) error; Get(key string) (string, error) }  // Store is an interface whose method comments stay out of llm.txt.\n"
+	if !strings.Contains(api, want) {
+		t.Fatalf("api lacks %q:\n%s", want, api)
+	}
+}
+
+func TestAPIExpandsAliasesOfTypesInsideTheModule(t *testing.T) {
+	api, err := llmdoc.API(fixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"type Options struct{ Name string; Nested sub.Inner; Pointer *sub.Inner; Every time.Duration }  // Options is sub.Options, shown with its fields.\n",
+		"type Handler = func(name string, in sub.Inner) error  // Handler is sub.Handler, shown with its signature.\n",
+		"type Level = sub.Level  // Level is sub.Level, left as an alias.\n",
+	} {
+		if !strings.Contains(api, want) {
+			t.Errorf("api lacks %q:\n%s", want, api)
+		}
+	}
+}
+
+func TestAPIOnlyAndExcludeFilterDeclarations(t *testing.T) {
+	only := fixture()
+	only.Only = []string{"Enable", "Config", "Kind*"}
+	api, err := llmdoc.API(only)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"func Enable(", "type Config struct", "type Kind int", "const KindA, KindB Kind"} {
+		if !strings.Contains(api, want) {
+			t.Errorf("Only: api lacks %q:\n%s", want, api)
+		}
+	}
+	for _, unwanted := range []string{"func From(", "Validate", "type Option ", "ErrNope"} {
+		if strings.Contains(api, unwanted) {
+			t.Errorf("Only: api has %q:\n%s", unwanted, api)
+		}
+	}
+
+	exclude := fixture()
+	exclude.Exclude = []string{"From", "Config.*", "KindB"}
+	api, err = llmdoc.API(exclude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{"func From(", "Validate", "KindB"} {
+		if strings.Contains(api, unwanted) {
+			t.Errorf("Exclude: api has %q:\n%s", unwanted, api)
+		}
+	}
+	for _, want := range []string{"func Enable(", "type Config struct", "const KindA Kind"} {
+		if !strings.Contains(api, want) {
+			t.Errorf("Exclude: api lacks %q:\n%s", want, api)
+		}
+	}
+}
+
+func TestAPISkipsTheConfigValidateItsSectionDocuments(t *testing.T) {
+	p := fixture()
+	p.Config, p.Section = "Config", "FIXTURE"
+	api, err := llmdoc.API(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(api, "Validate") {
+		t.Fatalf("api lists Validate, which config loading runs:\n%s", api)
+	}
+	if !strings.Contains(api, "type Config struct") {
+		t.Fatalf("api lacks the Config type:\n%s", api)
 	}
 }
 

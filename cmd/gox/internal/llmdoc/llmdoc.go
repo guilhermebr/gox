@@ -1,5 +1,5 @@
-// Package llmdoc generates llm.txt: the one file a model needs to build a
-// service on gox. Static fragments (purpose, canonical mains, layout,
+// Package llmdoc generates llm.txt, the single-file export of gox's docs for
+// tools without a shell. Static fragments (purpose, canonical mains, layout,
 // conventions) are read from a directory; the public API and the
 // environment variables are extracted from Go source with go/doc and
 // go/ast so they cannot drift from the code.
@@ -14,6 +14,7 @@ import (
 	"go/printer"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -27,10 +28,34 @@ type Package struct {
 	Title      string // heading, e.g. "gox (root)"
 	ImportPath string
 	Dir        string
-	Config     string // config struct name, "" for none
-	Section    string // env section name ("POSTGRES"), "" for the base config
-	DeclaredBy string // option that registers the section
-	ConfigOnly bool   // document the config and skip the API
+	Config     string   // config struct name, "" for none
+	Section    string   // env section name ("POSTGRES"), "" for the base config
+	DeclaredBy string   // option that registers the section
+	ConfigOnly bool     // document the config and skip the API
+	Only       []string // when set, only these declarations (path.Match patterns; a method is "Type.Method")
+	Exclude    []string // declarations to leave out, as in Only
+}
+
+// keep reports whether the declaration name (a method is "Type.Method")
+// goes into llm.txt. The config type's Validate is left out: config
+// loading runs it and the ## Config section documents the type.
+func (p Package) keep(name string) bool {
+	if p.Config != "" && name == p.Config+".Validate" {
+		return false
+	}
+	if len(p.Only) > 0 && !matches(p.Only, name) {
+		return false
+	}
+	return !matches(p.Exclude, name)
+}
+
+func matches(patterns []string, name string) bool {
+	for _, pat := range patterns {
+		if ok, _ := path.Match(pat, name); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Spec is what Generate needs.
@@ -76,7 +101,7 @@ func Generate(spec Spec) ([]byte, error) {
 	}
 	for _, p := range spec.Packages {
 		if !p.ConfigOnly {
-			api, err := API(p.Dir, p.ImportPath)
+			api, err := API(p)
 			if err != nil {
 				return nil, err
 			}
@@ -113,42 +138,55 @@ func Generate(spec Spec) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// API renders every exported declaration of the package in dir as one line
-// each: the signature and the first sentence of its doc comment.
-func API(dir, importPath string) (string, error) {
-	fset, files, err := parseDir(dir)
+// API renders the exported declarations of p that p.keep allows as one
+// line each: the signature and the first sentence of its doc comment (of
+// its Deprecated: paragraph when it has one).
+func API(p Package) (string, error) {
+	fset, files, err := parseDir(p.Dir)
 	if err != nil {
 		return "", err
 	}
-	d, err := doc.NewFromFiles(fset, files, importPath)
+	d, err := doc.NewFromFiles(fset, files, p.ImportPath)
 	if err != nil {
-		return "", fmt.Errorf("llmdoc: doc %s: %w", dir, err)
+		return "", fmt.Errorf("llmdoc: doc %s: %w", p.Dir, err)
+	}
+	byName := map[string]*ast.File{}
+	for _, f := range files {
+		byName[fset.File(f.Pos()).Name()] = f
 	}
 	var sb strings.Builder
 
 	for _, c := range d.Consts {
-		writeValues(&sb, fset, "const", c)
+		writeValues(&sb, fset, "const", c, p.keep)
 	}
 	for _, v := range d.Vars {
-		writeValues(&sb, fset, "var", v)
+		writeValues(&sb, fset, "var", v, p.keep)
 	}
 	for _, t := range d.Types {
-		fmt.Fprintf(&sb, "type %s %s  // %s\n", t.Name, typeExpr(fset, t), first(t.Doc))
+		if p.keep(t.Name) {
+			fmt.Fprintf(&sb, "type %s %s  // %s\n", t.Name, typeExpr(fset, t, p, byName), summary(t.Doc))
+		}
 		for _, c := range t.Consts {
-			writeValues(&sb, fset, "const", c)
+			writeValues(&sb, fset, "const", c, p.keep)
 		}
 		for _, v := range t.Vars {
-			writeValues(&sb, fset, "var", v)
+			writeValues(&sb, fset, "var", v, p.keep)
 		}
 		for _, f := range t.Funcs {
-			fmt.Fprintf(&sb, "%s  // %s\n", signature(fset, f.Decl), first(f.Doc))
+			if p.keep(f.Name) {
+				fmt.Fprintf(&sb, "%s  // %s\n", signature(fset, f.Decl), summary(f.Doc))
+			}
 		}
 		for _, m := range t.Methods {
-			fmt.Fprintf(&sb, "%s  // %s\n", signature(fset, m.Decl), first(m.Doc))
+			if p.keep(t.Name + "." + m.Name) {
+				fmt.Fprintf(&sb, "%s  // %s\n", signature(fset, m.Decl), summary(m.Doc))
+			}
 		}
 	}
 	for _, f := range d.Funcs {
-		fmt.Fprintf(&sb, "%s  // %s\n", signature(fset, f.Decl), first(f.Doc))
+		if p.keep(f.Name) {
+			fmt.Fprintf(&sb, "%s  // %s\n", signature(fset, f.Decl), summary(f.Doc))
+		}
 	}
 	return sb.String(), nil
 }
@@ -178,7 +216,17 @@ func parseDir(dir string) (*token.FileSet, []*ast.File, error) {
 	return fset, files, nil
 }
 
-func writeValues(sb *strings.Builder, fset *token.FileSet, kind string, v *doc.Value) {
+func writeValues(sb *strings.Builder, fset *token.FileSet, kind string, v *doc.Value, keep func(string) bool) {
+	exportedNames := func(vs *ast.ValueSpec) []string {
+		var names []string
+		for _, n := range vs.Names {
+			if n.IsExported() && keep(n.Name) {
+				names = append(names, n.Name)
+			}
+		}
+		return names
+	}
+	hasExported := func(vs *ast.ValueSpec) bool { return len(exportedNames(vs)) > 0 }
 	// Specs that carry their own comment get their own line; otherwise the
 	// group is one line with the group's comment.
 	perSpec := false
@@ -208,9 +256,9 @@ func writeValues(sb *strings.Builder, fset *token.FileSet, kind string, v *doc.V
 			if typ == "" && kind == "var" {
 				typ = inferVarType(fset, vs)
 			}
-			docText := first(v.Doc)
+			docText := summary(v.Doc)
 			if vs.Doc != nil {
-				docText = first(vs.Doc.Text())
+				docText = summary(vs.Doc.Text())
 			}
 			fmt.Fprintf(sb, "%s  // %s\n", valueLine(kind, exportedNames(vs), typ), docText)
 		}
@@ -231,19 +279,7 @@ func writeValues(sb *strings.Builder, fset *token.FileSet, kind string, v *doc.V
 			typ = inferVarType(fset, vs)
 		}
 	}
-	fmt.Fprintf(sb, "%s  // %s\n", valueLine(kind, names, typ), first(v.Doc))
-}
-
-func hasExported(vs *ast.ValueSpec) bool { return len(exportedNames(vs)) > 0 }
-
-func exportedNames(vs *ast.ValueSpec) []string {
-	var names []string
-	for _, n := range vs.Names {
-		if n.IsExported() {
-			names = append(names, n.Name)
-		}
-	}
-	return names
+	fmt.Fprintf(sb, "%s  // %s\n", valueLine(kind, names, typ), summary(v.Doc))
 }
 
 func valueLine(kind string, names []string, typ string) string {
@@ -271,24 +307,128 @@ func inferVarType(fset *token.FileSet, vs *ast.ValueSpec) string {
 	return ""
 }
 
-func typeExpr(fset *token.FileSet, t *doc.Type) string {
+func typeExpr(fset *token.FileSet, t *doc.Type, p Package, files map[string]*ast.File) string {
 	for _, spec := range t.Decl.Specs {
 		ts, ok := spec.(*ast.TypeSpec)
 		if !ok || ts.Name.Name != t.Name {
 			continue
 		}
-		prefix := ""
-		if ts.Assign.IsValid() {
-			prefix = "= "
+		if !ts.Assign.IsValid() {
+			return typeString(fset, ts.Type)
 		}
-		return prefix + typeString(fset, ts.Type)
+		if target, ok := aliasTarget(ts, p, files[fset.File(ts.Pos()).Name()]); ok {
+			return target
+		}
+		return "= " + typeString(fset, ts.Type)
 	}
 	return ""
 }
 
+// aliasTarget renders what an alias names when the target lives in a
+// package under p (the root's pkg/*), whose docs llm.txt does not carry:
+// a struct as its fields, so the alias reads like the struct it is, and a
+// func or interface type as "= <type>". Aliases of named basic types
+// (errors.Code) and of other modules stay as they are.
+func aliasTarget(ts *ast.TypeSpec, p Package, file *ast.File) (string, bool) {
+	sel, ok := ts.Type.(*ast.SelectorExpr)
+	if !ok || file == nil {
+		return "", false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	rel, ok := strings.CutPrefix(importPath(file, pkg.Name), p.ImportPath+"/")
+	if !ok {
+		return "", false
+	}
+	fset, files, err := parseDir(filepath.Join(p.Dir, filepath.FromSlash(rel)))
+	if err != nil {
+		return "", false
+	}
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				target, ok := spec.(*ast.TypeSpec)
+				if !ok || target.Name.Name != sel.Sel.Name {
+					continue
+				}
+				qualify(target.Type, pkg.Name)
+				switch target.Type.(type) {
+				case *ast.StructType:
+					return typeString(fset, target.Type), true
+				case *ast.FuncType, *ast.InterfaceType:
+					return "= " + typeString(fset, target.Type), true
+				}
+				return "", false
+			}
+		}
+	}
+	return "", false
+}
+
+// importPath returns the path file imports under name, "" if none.
+func importPath(file *ast.File, name string) string {
+	for _, imp := range file.Imports {
+		p := strings.Trim(imp.Path.Value, `"`)
+		n := p[strings.LastIndex(p, "/")+1:]
+		if imp.Name != nil {
+			n = imp.Name.Name
+		}
+		if n == name {
+			return p
+		}
+	}
+	return ""
+}
+
+// qualify prefixes the exported type names in expr, which come from
+// package pkg, with "pkg." so they read right outside it. Field, parameter
+// and method names are left alone.
+func qualify(expr ast.Expr, pkg string) {
+	names := map[*ast.Ident]bool{}
+	ast.Inspect(expr, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.SelectorExpr:
+			return false
+		case *ast.Field:
+			for _, id := range n.Names {
+				names[id] = true
+			}
+		case *ast.Ident:
+			if !names[n] && n.IsExported() {
+				n.Name = pkg + "." + n.Name
+			}
+		}
+		return true
+	})
+}
+
 // typeString renders a type; structs show their exported fields so a
-// model knows what to read and set.
+// model knows what to read and set, and interfaces their methods without
+// the comments, which would turn the rest of the line into a comment.
 func typeString(fset *token.FileSet, expr ast.Expr) string {
+	if it, ok := expr.(*ast.InterfaceType); ok {
+		var methods []string
+		for _, f := range it.Methods.List {
+			ft, ok := f.Type.(*ast.FuncType)
+			if !ok || len(f.Names) == 0 {
+				methods = append(methods, exprString(fset, f.Type))
+				continue
+			}
+			for _, n := range f.Names {
+				methods = append(methods, n.Name+strings.TrimPrefix(exprString(fset, ft), "func"))
+			}
+		}
+		if len(methods) == 0 {
+			return "interface{}"
+		}
+		return "interface{ " + strings.Join(methods, "; ") + " }"
+	}
 	st, ok := expr.(*ast.StructType)
 	if !ok {
 		return exprString(fset, expr)
@@ -328,18 +468,29 @@ func exprString(fset *token.FileSet, node any) string {
 	return strings.Join(strings.Fields(buf.String()), " ")
 }
 
-// first returns the first sentence of a doc comment.
+// summary is what llm.txt shows for a declaration: the first sentence of
+// its doc comment, or of its Deprecated: paragraph when it has one, so a
+// deprecated name never reads as a way to do something.
+func summary(text string) string {
+	for _, para := range strings.Split(text, "\n\n") {
+		if para = strings.TrimSpace(para); strings.HasPrefix(para, "Deprecated:") {
+			return first(para)
+		}
+	}
+	return first(text)
+}
+
+// first returns the first sentence of a doc comment: up to the first
+// period that ends a line or is followed by a space.
 func first(text string) string {
 	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
+	end := len(text)
+	for _, sep := range []string{". ", ".\n"} {
+		if i := strings.Index(text, sep); i >= 0 && i+1 < end {
+			end = i + 1
+		}
 	}
-	if i := strings.Index(text, ". "); i >= 0 {
-		text = text[:i+1]
-	} else if i := strings.Index(text, ".\n"); i >= 0 {
-		text = text[:i+1]
-	}
-	return strings.Join(strings.Fields(text), " ")
+	return strings.Join(strings.Fields(text[:end]), " ")
 }
 
 // EnvVar is one environment variable derived from a config struct.
