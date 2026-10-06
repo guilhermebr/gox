@@ -1,0 +1,108 @@
+---
+name: gox-background-work
+description: Pick and build background or scheduled work in this gox service - timers, cron schedules, queues, retries, long-running loops, durable multi-step workflows, or separate API and worker processes. Use it whenever a task says job, cron, nightly, every N minutes, interval, schedule, queue, worker, consumer, retry later, async or in the background, even if it names no mechanism, because gox has several and the wrong one runs the work once per replica or loses it on restart. Not for work that finishes inside the request, and not for streaming responses (SSE, WebSockets).
+---
+
+# Background and scheduled work
+
+Never start a bare goroutine for work that outlives a request: gox does not stop
+it on shutdown and nothing recovers its panics. Pick the mechanism, then read the
+recipe named for it: `docs/recipes/<recipe>.md` in the gox module directory (the
+"Look it up" section of AGENTS.md says how to find it).
+
+## Pick one
+
+| The work | Use | Where it runs | Recipe |
+|---|---|---|---|
+| Repeats on a timer; an extra or a lost run is harmless (refresh a cache, prune idempotently) | `gox.Periodic(name, every, fn)` | every replica, in process | `add-periodic-job` |
+| A loop or listener with its own start and stop (queue consumer, TCP listener, watcher) | `gox.Component(c)` | every replica, in process | `add-custom-component` |
+| Must happen once per event, survive restarts and retry with backoff (send a receipt, call a webhook) | `gox/jobs`: River on Postgres | any replica that works jobs | `add-background-job` |
+| A schedule that must fire once per fleet, or at a clock time (nightly at 03:00) | `jobs.Schedule` with a cron spec | one replica per run | `add-background-job` |
+| Several steps over hours or days, waits for signals, compensates on failure | `gox/providers/temporal` | Temporal workers | `add-temporal-workflow` |
+| API and workers deployed and scaled separately from one codebase | one wiring package, two mains | per binary | `two-binaries-one-wiring` |
+
+Decide with these questions, in order:
+
+1. Would running it on every replica at once be wrong (double charge, duplicate
+   email, report sent N times)? Then not `gox.Periodic`: use `gox/jobs`.
+2. Must it survive a deploy or a crash mid-run, or retry later? `gox/jobs`.
+3. Is it one task, or a process with steps and waits? One task: `gox/jobs`.
+   A process: Temporal.
+4. None of the above: `gox.Periodic` for a timer, `gox.Component` for a loop.
+
+`gox/jobs` needs Postgres
+{{- if not .Postgres }}, which this service does not have yet: add it first (gox-add-feature skill)
+{{- end }}. Temporal needs a Temporal server. Both are modules to `go get` (gox-add-feature skill).
+
+## gox.Periodic
+
+- It is an option to `gox.New`. The first run comes shortly after start, then one
+  every interval; a restart resets the schedule. It is not a clock-time cron.
+- `fn` gets a context cancelled on shutdown: pass it to every call and return
+  when it is done. A returned error or a panic is logged and the next tick runs
+  as usual; there is no retry or backoff.
+- Make `fn` a named function or a method on a struct that holds its dependencies,
+  so a test calls it directly: `err := job.run(ctx)`. Never wait for the ticker in
+  a test.
+
+### Interval from config
+
+`gox.Periodic` takes the interval when the options are built, before `gox.New`
+loads config. Load the same `Config` first with `gox.LoadConfig`, under the same
+name:
+
+```go
+var cfg Config // ExpireEvery time.Duration `conf:"default:15m,help:how often trials expire"`
+every := time.Minute // only used when LoadConfig fails; MustNew then reports why
+if err := gox.LoadConfig("{{ .Name }}", &cfg); err == nil {
+	every = cfg.ExpireEvery
+}
+a := gox.MustNew("{{ .Name }}",
+	gox.WithConfig(&cfg),
+	// ...the options already there...
+	gox.Periodic("expire-trials", every, expireTrials),
+)
+```
+
+- Do not exit when `LoadConfig` fails. It also fails for `--help` and `--version`,
+  before defaults are applied, and `MustNew` is what prints those (and a real
+  config error). Exiting there makes `--help` print nothing.
+- Keep the placeholder above zero: `gox.Periodic` rejects a zero interval before
+  `MustNew` gets to print help.
+- With `gox/jobs` there is no such step: `jobs.Schedule` is called after `New`, so
+  it reads `cfg` directly.
+
+## gox.Component
+
+A component has `Name`, `Start` and `Stop`. `Start` returns quickly; a blocking loop
+goes in `Run(ctx) error`, which gox runs in its own goroutine after `Start` and
+cancels on shutdown. A non-nil error from `Run` stops the whole service. Add
+`Ready(ctx) error` to take part in `/readyz`. Pass it with `gox.Component(c)` in
+`gox.New`, or `a.Add(c)` after `New`. The full contract:
+`go doc github.com/guilhermebr/gox/pkg/lifecycle` (read it; do not import it).
+
+## gox/jobs
+
+- `jobs.Enable(postgres.From)` in `gox.New`; `jobs.Register` and `jobs.Schedule`
+  between `gox.New` and `a.Run()`, like routes.
+- Enqueue inside the transaction that makes the change: `jobs.From(a).InsertTx`
+  within `postgres.Tx`, so the job exists only if the change commits.
+- Never rename a job's `Kind()` once jobs of that kind exist.
+- `{{ .Prefix }}_JOBS_WORK=false` makes a process insert-only: an API next to a separate
+  worker. `go doc github.com/guilhermebr/gox/jobs` has the rest.
+
+## Gotchas
+
+- Streaming a response (SSE, WebSockets) is not background work, and gox does not
+  support it: `gox.HTTP()` buffers every response until the handler returns and
+  answers 504 at the request timeout.
+- Work that must not block a request (email, a slow API) goes to `gox/jobs`, not to
+  a goroutine started in the handler.
+- Webhook handlers answer quickly and hand slow work to `gox/jobs`; the sender
+  retries until it gets a 2xx.
+
+## Done
+
+- The job's logic has a test that calls it directly.
+- New variables are in `.env.example` and visible in `go run ./cmd/{{ .Name }} --help`.
+- `make test lint` passes.

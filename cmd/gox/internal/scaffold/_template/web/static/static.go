@@ -5,7 +5,8 @@ package static
 
 import "embed"
 
-// FS holds css/, js/ and img/ (run `make assets` to vendor htmx and Alpine.js).
+// FS holds css/ and js/ (run `make assets` to vendor htmx and Alpine.js). A
+// new directory (img/) is served only once it is added to the line below.
 //
 //go:embed all:css all:js
 var FS embed.FS

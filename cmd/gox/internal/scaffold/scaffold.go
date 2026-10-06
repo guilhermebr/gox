@@ -83,7 +83,9 @@ func Render(opts Options) (map[string][]byte, error) {
 			return nil, err
 		}
 	}
-	out["CLAUDE.md"] = out["AGENTS.md"]
+	// Claude Code reads CLAUDE.md, other agents AGENTS.md: an import keeps
+	// one source and never loads the text twice.
+	out["CLAUDE.md"] = []byte("@AGENTS.md\n")
 	return out, nil
 }
 

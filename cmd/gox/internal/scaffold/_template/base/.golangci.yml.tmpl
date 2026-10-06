@@ -28,3 +28,8 @@ formatters:
   enable:
     - gofumpt
     - goimports
+  settings:
+    gofumpt:
+      # Keep equal to the module line in go.mod: gofumpt groups imports by it,
+      # and a module path without a dot is otherwise taken for the stdlib.
+      module-path: "{{ .Module }}"

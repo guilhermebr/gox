@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -60,8 +61,8 @@ func TestRenderBaseService(t *testing.T) {
 	if strings.Contains(env, "POSTGRES_URL") || strings.Contains(env, "WEB_SESSION_SECRET") {
 		t.Fatalf(".env.example lists variables of features that are not enabled:\n%s", env)
 	}
-	if files["AGENTS.md"] != files["CLAUDE.md"] {
-		t.Fatal("CLAUDE.md must be a copy of AGENTS.md")
+	if files["CLAUDE.md"] != "@AGENTS.md\n" {
+		t.Fatalf("CLAUDE.md = %q; it must be the one-line import @AGENTS.md so Claude Code reads AGENTS.md once", files["CLAUDE.md"])
 	}
 	if !strings.Contains(files["Dockerfile"], "distroless") || !strings.Contains(files["Dockerfile"], "./cmd/billing-api") {
 		t.Fatalf("Dockerfile:\n%s", files["Dockerfile"])
@@ -105,6 +106,116 @@ func TestRenderPostgresAndWeb(t *testing.T) {
 	}
 }
 
+// TestAgentGuidancePerVariant checks what an agent in a generated service
+// loads first: AGENTS.md names only what the service has, with its own name
+// and prefix, within budget, and the skills it routes to are the ones
+// written.
+func TestAgentGuidancePerVariant(t *testing.T) {
+	base := []string{"gox-add-feature", "gox-background-work"}
+	for _, v := range []struct {
+		name          string
+		postgres, web bool
+		skills        []string
+	}{
+		{"plain", false, false, base},
+		{"postgres", true, false, append(slices.Clone(base), "gox-postgres")},
+		{"web", false, true, append(slices.Clone(base), "gox-web-ui")},
+		{"postgres+web", true, true, append(slices.Clone(base), "gox-postgres", "gox-web-ui")},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			files := render(t, scaffold.Options{Name: "billing-api", Module: "billing-api", Postgres: v.postgres, Web: v.web})
+			if got := files["CLAUDE.md"]; got != "@AGENTS.md\n" {
+				t.Errorf("CLAUDE.md = %q, want the import line %q", got, "@AGENTS.md\n")
+			}
+
+			agents := files["AGENTS.md"]
+			if len(agents) > 6144 {
+				t.Errorf("AGENTS.md is %d bytes, over the 6144-byte budget: move task detail into a skill", len(agents))
+			}
+			// The go list format string is the one intended pair of braces.
+			if bad := unrendered(strings.ReplaceAll(agents, "-f '{{.Dir}}'", "")); bad != "" {
+				t.Errorf("AGENTS.md contains %q: write the service's own name and prefix in AGENTS.md.tmpl", bad)
+			}
+			for _, want := range []string{"cmd/billing-api/main.go", "BILLING_API_*", "go run ./cmd/billing-api --help", "go list -m -f '{{.Dir}}' github.com/guilhermebr/gox"} {
+				if !strings.Contains(agents, want) {
+					t.Errorf("AGENTS.md lacks %q", want)
+				}
+			}
+			for skill, enabled := range map[string]bool{"gox-postgres": v.postgres, "gox-web-ui": v.web} {
+				if strings.Contains(agents, skill) != enabled {
+					t.Errorf("AGENTS.md mentions %s = %v, want %v (only for services that have the feature)", skill, !enabled, enabled)
+				}
+			}
+
+			var skills []string
+			for p, content := range files {
+				rest, ok := strings.CutPrefix(p, ".claude/skills/")
+				if !ok {
+					continue
+				}
+				name, file, _ := strings.Cut(rest, "/")
+				if file != "SKILL.md" {
+					t.Errorf("%s: a skill directory holds only SKILL.md", p)
+					continue
+				}
+				skills = append(skills, name)
+				checkSkill(t, p, name, content)
+				if !strings.Contains(agents, ".claude/skills/"+name+"/SKILL.md") {
+					t.Errorf("AGENTS.md does not route any task to %s", p)
+				}
+			}
+			slices.Sort(skills)
+			if !slices.Equal(skills, v.skills) {
+				t.Errorf("skills = %v, want %v", skills, v.skills)
+			}
+		})
+	}
+}
+
+// checkSkill holds a rendered skill to what Claude Code needs: frontmatter
+// whose name is the directory, a one-line description YAML reads as plain
+// text, and a body short enough to load whole.
+func checkSkill(t *testing.T, path, dir, content string) {
+	t.Helper()
+	front, body, ok := strings.Cut(strings.TrimPrefix(content, "---\n"), "\n---\n")
+	if !strings.HasPrefix(content, "---\n") || !ok {
+		t.Errorf("%s: must start with a --- frontmatter block", path)
+		return
+	}
+	fields := map[string]string{}
+	for line := range strings.Lines(front) {
+		k, val, _ := strings.Cut(strings.TrimSuffix(line, "\n"), ": ")
+		fields[k] = val
+	}
+	if fields["name"] != dir {
+		t.Errorf("%s: frontmatter name %q must equal its directory %q", path, fields["name"], dir)
+	}
+	desc := fields["description"]
+	if desc == "" || len(desc) > 1024 {
+		t.Errorf("%s: description is %d characters; it must be 1-1024", path, len(desc))
+	}
+	if strings.Contains(desc, ": ") || strings.Contains(desc, " #") {
+		t.Errorf("%s: description contains \": \" or \" #\", which breaks the plain YAML scalar", path)
+	}
+	if n := strings.Count(body, "\n"); n > 200 {
+		t.Errorf("%s: body is %d lines, over the 200-line budget", path, n)
+	}
+	if bad := unrendered(content); bad != "" {
+		t.Errorf("%s: contains %q: render it with the service's own name and prefix", path, bad)
+	}
+}
+
+// unrendered returns the first leftover template action or generic
+// placeholder in s, or "".
+func unrendered(s string) string {
+	for _, bad := range []string{"{{", "}}", "<name>", "<PREFIX>"} {
+		if strings.Contains(s, bad) {
+			return bad
+		}
+	}
+	return ""
+}
+
 func TestRenderRejectsBadNames(t *testing.T) {
 	for _, name := range []string{"", "My Service", "1abc", "a/b", "-x"} {
 		if _, err := scaffold.Render(scaffold.Options{Name: name, Module: "example.com/x"}); err == nil {
@@ -129,13 +240,14 @@ func TestGoxDirAddsReplaceDirectives(t *testing.T) {
 }
 
 // TestGeneratedServiceBuildsTestsAndAnswersHealthz is the zero-edit
-// guarantee: services from gox new must build, pass their own tests, run,
-// and answer /healthz on the admin port without touching a file. The web
-// variant runs without any environment; the postgres variant needs a
-// database and is only run when DATABASE_URL is set (CI provides one),
-// otherwise it is built and tested but not started. DATABASE_URL must
-// point at a database the tests own: the service runs its migrations, and
-// a schema_migrations table left by another project makes migrate fail.
+// guarantee: services from gox new must build, pass their own tests and
+// lint, run, and answer /healthz on the admin port without touching a file.
+// The plain and web variants run without any environment; the postgres
+// variant needs a database and is only run when DATABASE_URL is set (CI
+// provides one), otherwise it is built and tested but not started.
+// DATABASE_URL must point at a database the tests own: the service runs its
+// migrations, and a schema_migrations table left by another project makes
+// migrate fail. Lint runs when golangci-lint is on PATH.
 func TestGeneratedServiceBuildsTestsAndAnswersHealthz(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds whole services; skipped with -short")
@@ -144,6 +256,12 @@ func TestGeneratedServiceBuildsTestsAndAnswersHealthz(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("plain, module without a dot", func(t *testing.T) {
+		// gox new's default module is the bare name; gofumpt must still
+		// tell the service's own imports from the standard library.
+		dir := generate(t, scaffold.Options{Name: "billing", Module: "billing", GoxDir: goxDir})
+		probe(t, dir, "billing", nil)
+	})
 	t.Run("web", func(t *testing.T) {
 		dir := generate(t, scaffold.Options{Name: "shop", Module: "example.com/shop", Web: true, GoxDir: goxDir})
 		probe(t, dir, "shop", nil)
@@ -159,7 +277,8 @@ func TestGeneratedServiceBuildsTestsAndAnswersHealthz(t *testing.T) {
 	})
 }
 
-// generate renders and writes a service, then builds, vets and tests it.
+// generate renders and writes a service, then builds, vets, tests and, when
+// golangci-lint is on PATH, lints it.
 func generate(t *testing.T, opts scaffold.Options) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -184,6 +303,20 @@ func generate(t *testing.T, opts scaffold.Options) string {
 	run("vet", "./...")
 	run("test", "./...")
 	run("build", "-o", filepath.Join(dir, opts.Name), "./cmd/"+opts.Name)
+
+	lint, err := exec.LookPath("golangci-lint")
+	if err != nil {
+		t.Log("golangci-lint is not on PATH: the generated service was not linted")
+		return dir
+	}
+	cmd := exec.Command(lint, "run", "./...")
+	cmd.Dir = dir
+	// Its own TMPDIR: golangci-lint refuses to start while another run holds
+	// the lock file there.
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "TMPDIR="+t.TempDir())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("golangci-lint run in the generated service: %v (CI pins v2.11.4; another version may disagree)\n%s", err, out)
+	}
 	return dir
 }
 

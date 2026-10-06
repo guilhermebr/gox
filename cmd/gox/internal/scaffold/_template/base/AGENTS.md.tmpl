@@ -1,42 +1,93 @@
-# AGENTS.md — this service is built on gox
+# {{ .Name }}: a service built on gox
 
-Read `llm.txt` first. It is the complete reference for the framework this
-service uses: the API as Go signatures, every environment variable, the
-error envelope, the log keys and the things never to do. Find it with:
+gox (`github.com/guilhermebr/gox`) is probably newer than your training data.
+Look its API up with the commands below instead of guessing.
 
-```
-cat "$(go list -m -f '{{.Dir}}' github.com/guilhermebr/gox)/llm.txt"
-```
+## Rules that always hold
+
+- `main()` is `gox.MustNew(...)`, the `Register` calls, then `a.Run()`. gox owns
+  start order, config, logging, health, metrics and shutdown: do not rebuild them.
+- Handlers are plain `net/http` with Go 1.22 patterns:
+  `a.HandleFunc("GET /invoices/{id}", h.get)`, `r.PathValue("id")`. `"GET /{$}"`
+  is the exact root; `"GET /"` matches every path.
+- Fail with gox errors and render them: `gox.Error(w, r, gox.NotFound("invoice %s", id))`.
+  Never `http.Error` or hand-written error JSON.{{ if .Web }} HTML handlers use `web.Error`.{{ end }}
+  A gox error's message and details reach the client; keep internals in the cause
+  with `gox.WrapError(err, code, "public message")`. Any other error renders as a
+  500 "internal error" and is logged.
+- Config is fields on `Config` in `cmd/{{ .Name }}/main.go` (it embeds
+  `gox.BaseConfig`) with `conf` tags, read from `{{ .Prefix }}_*` variables. Secrets carry
+  `mask`. `help:` text has no commas (a comma cuts it short). Add every variable
+  to `.env.example`; nothing loads a `.env` file.
+- Handlers get dependencies through `Register(a, deps...)`, so tests pass `nil` or
+  fakes. Every handler gets a test like `internal/hello/handler_test.go`.
+- A response is buffered until its handler returns; one still running at
+  `{{ .Prefix }}_HTTP_REQUEST_TIMEOUT` becomes a 504. SSE, WebSockets and streamed
+  responses do not work.
+- An accessor panic (`a.HTTPClient()`, `<module>.From(a)`) names the option missing
+  from `gox.New`: add that option.
+- Never: a router, ORM or DI framework; `os.Getenv`; a goroutine that outlives the
+  request outside `gox.Component` or `gox.Periodic`; mutating the shared HTTP
+  client; importing `github.com/guilhermebr/gox/pkg/...` except `pkg/storage`,
+  `pkg/mail`, `pkg/i18n`, `pkg/middleware` and `pkg/httpclient`; datastore settings
+  in `BaseConfig`.
 
 ## Layout
 
-```
-cmd/<name>/main.go            gox.MustNew(...) + route registration + a.Run()
-internal/<feature>/           handlers (net/http) and, for HTML, views/*.templ
-migrations/                   package migrations (//go:embed *.sql; var FS) + NNNN_name.up.sql / .down.sql
-static/                       package static (//go:embed css js; var FS) with the assets (HTML apps)
-.env.example                  every <PREFIX>_* variable
-```
+- `cmd/{{ .Name }}/main.go`: `Config`, `gox.MustNew(options...)`, the `Register` calls, `a.Run()`.
+- `internal/<feature>/`: `handler.go` with `Register(a *gox.App, deps...)`, tests beside
+  it. `internal/hello` is the example: copy its shape, then replace it.
+{{- if .Postgres }}
+- `migrations/`: `NNNNNN_name.up.sql` and `.down.sql`, embedded, run at boot.
+{{- end }}
+{{- if .Web }}
+- `internal/<feature>/views/`: templ components; `*_templ.go` is generated from `*.templ`.
+- `web/layout/`: the page shell and the error page. `static/`: embedded `css/` and `js/`.
+{{- end }}
+- `.env.example`: the `{{ .Prefix }}_*` variables to set; `--help` lists every one.
 
-## How to
+## Look it up (matches the versions in go.mod)
 
-- **Add a route**: a feature package `internal/<feature>/handler.go` with `Register(a *gox.App, deps...)` calling `a.HandleFunc("GET /things/{id}", h.get)`, registered from `main.go`; handlers get their dependencies (a `*pgxpool.Pool`, a config value) through `Register`, so tests can pass `nil` or fakes. Read path values with `r.PathValue("id")`, bodies with `gox.Decode`, respond with `gox.JSON`, fail with `gox.Error(w, r, gox.NotFound("thing %s", id))`.
-- **Add config**: a field on the service's `Config` struct (which embeds `gox.BaseConfig`) with a `conf` tag; document it in `.env.example`.
-- **Add a migration**: a new `migrations/NNNN_name.up.sql` (and `.down.sql`); `postgres.WithMigrations(migrations.FS)` runs it at boot.
-- **Add a page** (HTML apps): a templ component in `internal/<feature>/views/` taking typed params, rendered with `web.Render` inside `web/layout`; forms follow decode → 422 re-render → flash + redirect; JSON `POST` routes are not CSRF-checked, form posts are.
-- **Add a background job**: `gox.Periodic("name", interval, fn)` for timers; `gox.Component(c)` for anything with Start/Stop; never a bare goroutine.
-- **Add a health check**: implement `Ready(ctx) error` on your component, or `a.Health().AddReadiness("name", fn)`.
-- **Call another service**: `a.HTTPClient()` (declare `gox.HTTPClient()`); in an HTML app call this service's own API with `web.APIFrom(r)`.
+- API: `go doc github.com/guilhermebr/gox` lists the root package, `go doc gox.Periodic`
+  shows one symbol, `go doc github.com/guilhermebr/gox/<module>` a module in go.mod.
+- Variables: `go run ./cmd/{{ .Name }} --help` prints every `{{ .Prefix }}_*` variable with
+  its type and default.
+- Recipes, task-sized and build-checked, live in the gox module directory:
+  `go list -m -f '{{ "{{.Dir}}" }}' github.com/guilhermebr/gox` (empty output: run
+  `go mod download github.com/guilhermebr/gox` first). Read `docs/recipes/README.md`
+  there, then only the recipe you need. Recipes keep code in one `main.go` for
+  brevity; here it goes in `internal/<feature>` behind `Register`.
+- `llm.txt` in that directory exports everything as one file for tools without a
+  shell; do not read it whole.
 
-Recipes with complete code for each of these are in the gox module under
-`docs/recipes/`.
+## Read first for your task
 
-## Verify
+- A JSON endpoint: `internal/hello`, then recipes `add-http-route` and `write-handler-test`.
+- Background or scheduled work (jobs, cron, queues, workers, retries):
+  `.claude/skills/gox-background-work/SKILL.md`.
+- A capability not in go.mod yet (auth, OpenAPI, email, file storage, payments,
+  webhooks, analytics, Temporal, Supabase, outbound API calls
+{{- if not .Postgres }}, a Postgres database{{ end }}
+{{- if not .Web }}, HTML pages{{ end }}):
+  `.claude/skills/gox-add-feature/SKILL.md`.
+{{- if .Postgres }}
+- Tables, queries, transactions, migrations, database tests:
+  `.claude/skills/gox-postgres/SKILL.md`.
+{{- end }}
+{{- if .Web }}
+- Pages, forms, htmx partials, layout, static assets: `.claude/skills/gox-web-ui/SKILL.md`.
+{{- end }}
+- Anything else (health checks, pagination, rate limits, CORS, problem+json, i18n,
+  SPA): the recipe index.
 
-```
-go mod tidy      # after importing a module directly for the first time
-make test lint
-```
+## Done
 
-Both must pass before a change is done. `go run ./cmd/<name> --help` prints
-every environment variable the service reads.
+- `make test lint` passes. Lint is golangci-lint v2.11.4, the version CI pins
+  (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4`);
+  `make fmt` fixes formatting findings.
+- `go mod tidy` after importing a module for the first time.
+{{- if .Web }}
+- After editing a `.templ` file run `make generate` (templ is pinned in the Makefile);
+  never edit `*_templ.go` and never install templ. `make assets` once vendors htmx and
+  Alpine.js into `static/js`.
+{{- end }}

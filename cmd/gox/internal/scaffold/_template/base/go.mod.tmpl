@@ -1,6 +1,11 @@
 module {{ .Module }}
 
 go {{ .GoVersion }}
+{{- if .Web }}
+
+// The templ library stays on the version `make generate` runs (TEMPL_VERSION).
+require github.com/a-h/templ {{ .TemplVersion }}
+{{- end }}
 {{- if .GoxDir }}
 
 // Development: the gox modules come from a local checkout. Remove these

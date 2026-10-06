@@ -1,0 +1,89 @@
+---
+name: gox-postgres
+description: Change this service's Postgres data - tables, columns and indexes (migrations), queries, transactions, not-found and duplicate-key errors, pagination, and tests against a real database. Use it whenever a task stores, loads, updates, deletes or migrates data, touches SQL or migrations/, or adds a store or repository, even if Postgres is not named. Not for durable background jobs (gox-background-work) or for adding another module (gox-add-feature).
+---
+
+# Postgres in {{ .Name }}
+
+`postgres.Enable(postgres.WithMigrations(migrations.FS))` in `cmd/{{ .Name }}/main.go`
+declares the pool; `postgres.From(a)` returns it, a pgx v5 `*pgxpool.Pool`. Write SQL
+with pgx: no ORM, no query builder. Recipes `add-migration`, `add-postgres-query`
+and `paginate-a-list` (`docs/recipes/` in the gox module directory) show complete
+code.
+
+## Change the schema
+
+1. Add `migrations/<NNNNNN>_<change>.up.sql` and `.down.sql`, numbered after the
+   highest file there (the first is `000001_init`). `//go:embed *.sql` in
+   `migrations/migrations.go` picks them up; no Go change.
+2. They run at boot, before `/readyz` reports ready, under a lock, so replicas
+   starting together are safe. `{{ .Prefix }}_POSTGRES_MIGRATE=false` skips them where a
+   deploy step runs `postgres.Migrate(ctx, url, migrations.FS)` instead.
+3. Each file runs as one transaction: a failing statement rolls back the whole
+   file. `CREATE INDEX CONCURRENTLY` cannot run in a transaction: give it a file of
+   its own.
+4. Never edit, rename or delete a migration that has run anywhere: it never runs
+   again there, and boot fails once the file of the database's version is missing.
+   Add a new one.
+5. A failed migration marks the database dirty, and every boot after fails with
+   `Dirty database version N. Fix and force version.` On a local database: fix the
+   file, set the row back to the previous file's number,
+   `UPDATE schema_migrations SET version = <previous>, dirty = false` (the failed
+   file rolled back; delete the row if it was the first file), and boot again.
+
+## Query
+
+- The pool reaches handlers through `Register`, never through `postgres.From` in a
+  handler: `invoices.Register(a, postgres.From(a))` in main, kept in the handler
+  struct (`type handler struct{ db *pgxpool.Pool }`).
+- Pass `r.Context()` to every query. Values go in `$1` placeholders, never into the
+  SQL string.
+- Map the two expected failures to gox errors, and let everything else become a
+  500 whose cause is logged:
+
+```go
+err := h.db.QueryRow(r.Context(), "SELECT id, number FROM invoices WHERE id = $1", id).Scan(&inv.ID, &inv.Number)
+if errors.Is(err, pgx.ErrNoRows) {
+	gox.Error(w, r, gox.NotFound("invoice %s", id))
+	return
+}
+
+var pgErr *pgconn.PgError
+if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+	gox.Error(w, r, gox.AlreadyExists("invoice number %s is taken", in.Number))
+	return
+}
+if err != nil {
+	gox.Error(w, r, err) // 500 "internal error"; never copy err.Error() into a gox message
+	return
+}
+```
+
+- Transactions: `postgres.Tx(ctx, pool, func(tx pgx.Tx) error { ... })` commits when
+  the function returns nil and rolls back on an error or a panic; inside it, use
+  `tx`, not the pool. `postgres.TxWith` also sets values that triggers and
+  row-level security read with `current_setting()`.
+- Imports: `github.com/jackc/pgx/v5` (`pgx.ErrNoRows`, `pgx.Tx`), `.../pgx/v5/pgconn`
+  (`PgError`), `.../pgx/v5/pgxpool` (`Pool`). Run `go mod tidy` after the first one.
+- Lists paginate by keyset with `gox.ParsePage`, `page.Cursor` and
+  `gox.EncodeCursor`, not OFFSET: recipe `paginate-a-list`.
+
+## Test
+
+- Handler tests call `Register(a, nil)`: paths that fail before the database (bad
+  JSON, validation) need no pool. Copy `internal/hello/handler_test.go`.
+- Database tests live in `*_integration_test.go` files that start with
+  `//go:build integration`, skip when `DATABASE_URL` is unset, run
+  `postgres.Migrate(ctx, url, migrations.FS)`, then build the pool with
+  `pgxpool.New(ctx, url)` and pass it to `Register`. Point `DATABASE_URL` at a
+  throwaway database the tests own.
+- Run them with `DATABASE_URL=... go test -race -tags integration ./...`. Without
+  the variable they skip and still pass: check `-v` output for SKIP. `make test`
+  and `make lint` leave these files out; lint them with
+  `golangci-lint run --build-tags integration ./...`.
+
+## Run it
+
+`{{ .Prefix }}_POSTGRES_URL` is required and nothing loads `.env`:
+`export {{ .Prefix }}_POSTGRES_URL=postgres://...` before `make run`. `go run ./cmd/{{ .Name }} --help`
+lists the other `{{ .Prefix }}_POSTGRES_*` variables.

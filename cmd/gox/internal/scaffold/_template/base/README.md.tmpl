@@ -16,7 +16,7 @@ go run ./cmd/{{ .Name }} --help   # every {{ .Prefix }}_* variable
 {{- if .Web }}
 - `web/layout/`: the page shell; `internal/<feature>/views/`: templ pages; `static/`: embedded assets (`make assets` vendors htmx and Alpine.js).
 {{- end }}
-- `.env.example`: every variable the service reads.
+- `.env.example`: the variables to set; `--help` lists every one.
 
 Health: `GET :9090/healthz` (liveness), `GET :9090/readyz` (readiness, also on :8080), `GET :9090/metrics`, `GET :9090/version`.
 
