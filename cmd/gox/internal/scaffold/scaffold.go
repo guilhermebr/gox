@@ -26,6 +26,10 @@ var templates embed.FS
 // equal to web/go.mod.
 const TemplVersion = "v0.3.1020"
 
+// GolangciLintVersion is the golangci-lint the generated CI workflow pins. A
+// test keeps it equal to GOLANGCI_LINT_VERSION in the repository's CI.
+const GolangciLintVersion = "v2.11.4"
+
 // Pinned front-end assets the generated Makefile downloads into static/js.
 const (
 	HTMXVersion   = "2.0.4"
@@ -44,11 +48,12 @@ type Options struct {
 // data is what the templates see.
 type data struct {
 	Options
-	Prefix        string // uppercased name with hyphens as underscores: the env prefix
-	GoVersion     string
-	TemplVersion  string
-	HTMXVersion   string
-	AlpineVersion string
+	Prefix              string // uppercased name with hyphens as underscores: the env prefix
+	GoVersion           string
+	TemplVersion        string
+	GolangciLintVersion string
+	HTMXVersion         string
+	AlpineVersion       string
 }
 
 var nameRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
@@ -63,12 +68,13 @@ func Render(opts Options) (map[string][]byte, error) {
 		return nil, errors.New("scaffold: module path is required")
 	}
 	d := data{
-		Options:       opts,
-		Prefix:        strings.ToUpper(strings.ReplaceAll(opts.Name, "-", "_")),
-		GoVersion:     "1.26",
-		TemplVersion:  TemplVersion,
-		HTMXVersion:   HTMXVersion,
-		AlpineVersion: AlpineVersion,
+		Options:             opts,
+		Prefix:              strings.ToUpper(strings.ReplaceAll(opts.Name, "-", "_")),
+		GoVersion:           "1.26",
+		TemplVersion:        TemplVersion,
+		GolangciLintVersion: GolangciLintVersion,
+		HTMXVersion:         HTMXVersion,
+		AlpineVersion:       AlpineVersion,
 	}
 	out := map[string][]byte{}
 	layers := []string{"base"}

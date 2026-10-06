@@ -80,7 +80,7 @@ func TestRenderPostgresAndWeb(t *testing.T) {
 	for _, want := range []string{
 		"migrations/migrations.go", "migrations/000001_init.up.sql", "migrations/000001_init.down.sql",
 		"web/layout/layout.templ", "web/layout/layout_templ.go",
-		"internal/home/handler.go", "internal/home/views/home.templ", "internal/home/views/home_templ.go",
+		"internal/home/handler.go", "internal/home/handler_test.go", "internal/home/views/home.templ", "internal/home/views/home_templ.go",
 		"static/static.go", "static/css/app.css",
 	} {
 		if _, ok := files[want]; !ok {
@@ -315,7 +315,7 @@ func generate(t *testing.T, opts scaffold.Options) string {
 	// the lock file there.
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "TMPDIR="+t.TempDir())
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("golangci-lint run in the generated service: %v (CI pins v2.11.4; another version may disagree)\n%s", err, out)
+		t.Fatalf("golangci-lint run in the generated service: %v (CI pins %s; another version may disagree)\n%s", err, scaffold.GolangciLintVersion, out)
 	}
 	return dir
 }
@@ -395,5 +395,19 @@ func TestTemplVersionMatchesTheWebModule(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "github.com/a-h/templ "+scaffold.TemplVersion) {
 		t.Fatalf("scaffold.TemplVersion %s does not match web/go.mod:\n%s", scaffold.TemplVersion, b)
+	}
+}
+
+func TestGolangciLintVersionMatchesRootCI(t *testing.T) {
+	b, err := os.ReadFile("../../../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "GOLANGCI_LINT_VERSION: "+scaffold.GolangciLintVersion+"\n") {
+		t.Fatalf("scaffold.GolangciLintVersion %s does not match GOLANGCI_LINT_VERSION in .github/workflows/ci.yml: set it to the same version", scaffold.GolangciLintVersion)
+	}
+	files := render(t, scaffold.Options{Name: "shop", Module: "example.com/shop"})
+	if !strings.Contains(files[".github/workflows/ci.yml"], "version: "+scaffold.GolangciLintVersion+"\n") {
+		t.Fatalf("the generated CI workflow does not pin golangci-lint %s:\n%s", scaffold.GolangciLintVersion, files[".github/workflows/ci.yml"])
 	}
 }

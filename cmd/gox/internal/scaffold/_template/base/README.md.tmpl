@@ -9,7 +9,7 @@ go run ./cmd/{{ .Name }} --help   # every {{ .Prefix }}_* variable
 ```
 
 - `cmd/{{ .Name }}/main.go`: what the service is made of.
-- `internal/<feature>/`: one package per feature, each with `Register(a *gox.App)`.
+- `internal/<feature>/`: one package per feature, each with `Register(a *gox.App, deps...)`.
 {{- if .Postgres }}
 - `migrations/`: SQL files run at boot by `postgres.WithMigrations`.
 {{- end }}
@@ -18,6 +18,6 @@ go run ./cmd/{{ .Name }} --help   # every {{ .Prefix }}_* variable
 {{- end }}
 - `.env.example`: the variables to set; `--help` lists every one.
 
-Health: `GET :9090/healthz` (liveness), `GET :9090/readyz` (readiness, also on :8080), `GET :9090/metrics`, `GET :9090/version`.
+Health: `GET /healthz` (liveness) and `GET /readyz` (readiness) on :8080 and :9090; `/metrics`, `/version` and `/debug/pprof/` on :9090 only.
 
 For agents: read `AGENTS.md`.

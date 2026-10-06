@@ -7,9 +7,9 @@ description: Build or change server-rendered HTML in this gox service - templ pa
 
 Pages are templ components rendered by plain `net/http` handlers inside the layout.
 `internal/home` is the working example: `views/home.templ` (the component),
-`handler.go` (`Register` and the handler). `web/layout/layout.templ` is the shell
-(title, CSRF meta tag, flashes, htmx and Alpine.js); `static/` holds the embedded
-assets. Recipes: `add-html-page`, `add-form-with-validation`, `add-htmx-partial`,
+`handler.go` (`Register` and the handler), `handler_test.go` (its test).
+`web/layout/layout.templ` is the shell (title, CSRF meta tag, flashes, htmx and
+Alpine.js); `static/` holds the embedded assets. Recipes: `add-html-page`, `add-form-with-validation`, `add-htmx-partial`,
 `call-backend-api`, `translate-server-strings` (`docs/recipes/` in the gox module
 directory).
 
@@ -19,7 +19,6 @@ directory).
    parameters and never reads the request.
 2. Run `make generate`. It writes `<page>_templ.go` with the templ version pinned in
    the Makefile; until then the package does not compile (`undefined: views.<Page>`).
-   Never edit `*_templ.go`, never install templ, never run another templ version.
    Commit the generated files: CI does not generate them.
 3. In the handler set `web.PageFrom(r).Title` first, then
    `_ = web.Render(w, r, views.<Page>(...))`. The layout prints the title before the
@@ -31,39 +30,23 @@ Pick the writer:
 
 - `web.Render`: the page inside the layout; for an htmx request that is not an
   `hx-boost` navigation it sends the component alone.
-- `web.RenderStatus(w, r, status, c)`: the same with a status (422 for a form with
-  errors).
+- `web.RenderStatus`: the same with a status (422 for a form with errors).
 - `web.Partial`: the component alone, always (htmx fragments).
-- `web.Error(w, r, err)`: failures. Browsers get the error page, API clients the
-  JSON envelope, with the same status.
+- `gox.Error` (`web.Error` is the same function): failures. Browsers get the error
+  page, API clients the JSON envelope, with the same status.
 
 ## Forms
 
-`GET` renders the form; `POST` decodes, re-renders with the errors, or redirects:
-
-```go
-in, ferrs, err := web.Form[views.SignupInput](r) // fields tagged `form:"email,required"`
-if err != nil {
-	web.Error(w, r, err) // the body is not a form
-	return
-}
-if ferrs != nil {
-	web.PageFrom(r).Title = "Sign up"
-	_ = web.RenderStatus(w, r, http.StatusUnprocessableEntity, views.Signup(web.PageFrom(r), in, ferrs))
-	return
-}
-// save, then:
-web.AddFlash(w, r, "success", "Welcome")
-web.Redirect(w, r, "/") // 303, or HX-Redirect for htmx
-```
+`GET` renders the form. `POST` decodes with `web.Form[T]`; on `FieldErrors` it
+re-renders with `web.RenderStatus` and 422, else `web.AddFlash` and `web.Redirect`
+(303, or `HX-Redirect` for htmx). Code: recipe `add-form-with-validation`.
 
 - Every `<form method="post">` contains `@web.CSRFField(page)`, so the component
   takes `page *web.Page`. A form post without the token is a 403. htmx requests
   send the token from `@web.CSRFMeta(page)` and the script in the layout: keep both.
 - `web.FieldErrors` is keyed by the `form` tag name (`errs["email"]`).
   `go doc github.com/guilhermebr/gox/web.Form` lists the tags and the messages.
-- JSON requests are never CSRF-checked. A third party that posts a form (a webhook)
-  needs its path prefix in `web.WithCSRFExempt`.
+- JSON requests are never CSRF-checked.
 
 ## htmx, Alpine.js and static files
 
@@ -95,13 +78,9 @@ web.Redirect(w, r, "/") // 303, or HX-Redirect for htmx
 ## Test
 
 - Components: `views.Home("hi").Render(ctx, &buf)` and assert on the HTML. No app needed.
-- Handlers that use `web.Render`, `web.PageFrom` or `web.AddFlash` need the web
-  middleware: on a bare `a.Mux()` they panic. Build the app with
-  `gox.WithoutAdminServer()` (or it binds the admin port and fails while `make run`
-  or another package's test holds it), `gox.HTTP()` and `web.Enable()`, set
-  `t.Setenv("TEST_HTTP_ADDR", addr)` to a free port for an app named `test`, start
-  `a.RunContext(ctx)` in a goroutine, wait for `a.Health().IsReady()`, then use
-  `http.Get` and `http.Post`.
+- Handlers: copy `internal/home/handler_test.go`, which runs the app through its
+  middleware on a free port. On a bare `a.Mux()`, `web.Render`, `web.PageFrom` and
+  `web.AddFlash` panic.
 - `web.Enable()` without `web.WithSessions()` has no CSRF check, so a test can post
   a form directly. Use a client whose `CheckRedirect` returns
   `http.ErrUseLastResponse` to see the 303.

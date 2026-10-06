@@ -1,0 +1,71 @@
+package home_test
+
+import (
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/guilhermebr/gox"
+	"github.com/guilhermebr/gox/web"
+
+	"{{ .Module }}/internal/home"
+)
+
+// serve runs the app through its middleware chain on a free port and returns
+// its base URL. web.Render, web.PageFrom and web.AddFlash need that chain: on
+// the bare a.Mux() they panic. Without web.WithSessions() there is no CSRF
+// check, so a test can post a form directly.
+func serve(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	t.Setenv("TEST_HTTP_ADDR", addr) // the app below is named "test"
+
+	a, err := gox.New("test",
+		gox.WithoutAdminServer(), // the admin port may be taken by make run or another test
+		gox.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		gox.HTTP(),
+		web.Enable(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home.Register(a)
+
+	done := make(chan error, 1)
+	go func() { done <- a.RunContext(t.Context()) }()
+	t.Cleanup(func() {
+		if err := <-done; err != nil {
+			t.Errorf("RunContext: %v", err)
+		}
+	})
+	for deadline := time.Now().Add(5 * time.Second); !a.Health().IsReady(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the app did not become ready")
+		}
+	}
+	return "http://" + addr
+}
+
+func TestIndex(t *testing.T) {
+	resp, err := http.Get(serve(t) + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "It works.") {
+		t.Fatalf("got %d %s", resp.StatusCode, body)
+	}
+}

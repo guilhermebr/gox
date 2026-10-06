@@ -11,40 +11,23 @@ Look its API up with the commands below instead of guessing.
   `a.HandleFunc("GET /invoices/{id}", h.get)`, `r.PathValue("id")`. `"GET /{$}"`
   is the exact root; `"GET /"` matches every path.
 - Fail with gox errors and render them: `gox.Error(w, r, gox.NotFound("invoice %s", id))`.
-  Never `http.Error` or hand-written error JSON.{{ if .Web }} HTML handlers use `web.Error`.{{ end }}
-  A gox error's message and details reach the client; keep internals in the cause
-  with `gox.WrapError(err, code, "public message")`. Any other error renders as a
-  500 "internal error" and is logged.
-- Config is fields on `Config` in `cmd/{{ .Name }}/main.go` (it embeds
-  `gox.BaseConfig`) with `conf` tags, read from `{{ .Prefix }}_*` variables. Secrets carry
-  `mask`. `help:` text has no commas (a comma cuts it short). Add every variable
-  to `.env.example`; nothing loads a `.env` file.
-- Handlers get dependencies through `Register(a, deps...)`, so tests pass `nil` or
-  fakes. Every handler gets a test like `internal/hello/handler_test.go`.
+  Never `http.Error` or hand-written error JSON. A gox error's message and details
+  reach the client; keep internals in the cause with
+  `gox.WrapError(err, code, "public message")`. Other errors render as a logged 500
+  "internal error" (context deadline and cancel: 504 and 499).
+- Config is fields on `Config` in `cmd/{{ .Name }}/main.go` with `conf` tags, read from
+  `{{ .Prefix }}_*` variables. Secrets carry `mask`. `help:` text has no commas (a comma
+  cuts it short). Add every variable to `.env.example`; nothing loads a `.env` file.
+- A feature lives in `internal/<feature>/` and gets dependencies through
+  `Register(a, deps...)`, so tests pass `nil` or fakes. Every handler gets a test
+  like `internal/hello/handler_test.go`{{ if .Web }} (HTML handlers: `internal/home/handler_test.go`){{ end }}.
 - A response is buffered until its handler returns; one still running at
   `{{ .Prefix }}_HTTP_REQUEST_TIMEOUT` becomes a 504. SSE, WebSockets and streamed
   responses do not work.
-- An accessor panic (`a.HTTPClient()`, `<module>.From(a)`) names the option missing
-  from `gox.New`: add that option.
 - Never: a router, ORM or DI framework; `os.Getenv`; a goroutine that outlives the
   request outside `gox.Component` or `gox.Periodic`; mutating the shared HTTP
   client; importing `github.com/guilhermebr/gox/pkg/...` except `pkg/storage`,
-  `pkg/mail`, `pkg/i18n`, `pkg/middleware` and `pkg/httpclient`; datastore settings
-  in `BaseConfig`.
-
-## Layout
-
-- `cmd/{{ .Name }}/main.go`: `Config`, `gox.MustNew(options...)`, the `Register` calls, `a.Run()`.
-- `internal/<feature>/`: `handler.go` with `Register(a *gox.App, deps...)`, tests beside
-  it. `internal/hello` is the example: copy its shape, then replace it.
-{{- if .Postgres }}
-- `migrations/`: `NNNNNN_name.up.sql` and `.down.sql`, embedded, run at boot.
-{{- end }}
-{{- if .Web }}
-- `internal/<feature>/views/`: templ components; `*_templ.go` is generated from `*.templ`.
-- `web/layout/`: the page shell and the error page. `static/`: embedded `css/` and `js/`.
-{{- end }}
-- `.env.example`: the `{{ .Prefix }}_*` variables to set; `--help` lists every one.
+  `pkg/mail`, `pkg/i18n`, `pkg/middleware` and `pkg/httpclient`.
 
 ## Look it up (matches the versions in go.mod)
 
@@ -55,39 +38,36 @@ Look its API up with the commands below instead of guessing.
 - Recipes, task-sized and build-checked, live in the gox module directory:
   `go list -m -f '{{ "{{.Dir}}" }}' github.com/guilhermebr/gox` (empty output: run
   `go mod download github.com/guilhermebr/gox` first). Read `docs/recipes/README.md`
-  there, then only the recipe you need. Recipes keep code in one `main.go` for
-  brevity; here it goes in `internal/<feature>` behind `Register`.
-- `llm.txt` in that directory exports everything as one file for tools without a
-  shell; do not read it whole.
+  there, then only the recipe you need (skip `llm.txt` there: it is the single-file
+  export for tools without a shell).
 
 ## Read first for your task
 
-- A JSON endpoint: `internal/hello`, then recipes `add-http-route` and `write-handler-test`.
+- A JSON endpoint: copy the shape of `internal/hello`, then recipes `add-http-route`
+  and `write-handler-test`.
 - Background or scheduled work (jobs, cron, queues, workers, retries):
   `.claude/skills/gox-background-work/SKILL.md`.
-- A capability not in go.mod yet (auth, OpenAPI, email, file storage, payments,
-  webhooks, analytics, Temporal, Supabase, outbound API calls
+- A capability the service does not use yet (auth, OpenAPI, email, file storage,
+  payments, webhooks, analytics, translations, Temporal, Supabase, outbound API calls
 {{- if not .Postgres }}, a Postgres database{{ end }}
 {{- if not .Web }}, HTML pages{{ end }}):
   `.claude/skills/gox-add-feature/SKILL.md`.
 {{- if .Postgres }}
-- Tables, queries, transactions, migrations, database tests:
+- Tables, queries, transactions, pagination, `migrations/`, database tests:
   `.claude/skills/gox-postgres/SKILL.md`.
 {{- end }}
 {{- if .Web }}
-- Pages, forms, htmx partials, layout, static assets: `.claude/skills/gox-web-ui/SKILL.md`.
+- Pages, forms, htmx partials, `web/layout/`, `static/`: `.claude/skills/gox-web-ui/SKILL.md`.
 {{- end }}
-- Anything else (health checks, pagination, rate limits, CORS, problem+json, i18n,
-  SPA): the recipe index.
+- Anything else (health checks, rate limits, CORS, problem+json, SPA
+{{- if not .Postgres }}, pagination{{ end }}): the recipe index.
 
 ## Done
 
-- `make test lint` passes. Lint is golangci-lint v2.11.4, the version CI pins
-  (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4`);
-  `make fmt` fixes formatting findings.
+- `make test lint` passes (golangci-lint at the version pinned in `.github/workflows/ci.yml`:
+  `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<that version>`;
+  `make fmt` fixes formatting).
 - `go mod tidy` after importing a module for the first time.
 {{- if .Web }}
-- After editing a `.templ` file run `make generate` (templ is pinned in the Makefile);
-  never edit `*_templ.go` and never install templ. `make assets` once vendors htmx and
-  Alpine.js into `static/js`.
+- After editing a `.templ` file, `make generate`; never edit `*_templ.go` or install templ.
 {{- end }}

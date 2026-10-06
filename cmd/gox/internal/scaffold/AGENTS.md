@@ -19,8 +19,8 @@ Deltas for `gox new`; the root AGENTS.md applies too.
   `_template`: it would load into sessions in this repo
   (`make check-agent-docs` fails). `Render` writes the service's `CLAUDE.md`
   as `@AGENTS.md`.
-- The rules in `AGENTS.md.tmpl` mirror `docs/llm/00-intro.md` and the Never
-  list in `docs/llm/80-conventions.md`: change both.
+- The rules in `AGENTS.md.tmpl` are the part of `docs/llm/00-intro.md` and the
+  Never list in `docs/llm/80-conventions.md` that a service can break: change both.
 - `make generate` also regenerates the `*_templ.go` here, with the templ
   version in web/go.mod; never run a bare `templ`. `TemplVersion` in
   scaffold.go must equal web/go.mod (a test checks).

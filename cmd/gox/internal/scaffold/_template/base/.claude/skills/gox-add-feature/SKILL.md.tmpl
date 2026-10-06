@@ -1,14 +1,14 @@
 ---
 name: gox-add-feature
-description: Add a gox feature module or provider to this service, or wire one already in go.mod - authentication (JWT bearer tokens, identity-provider tokens, API-key auth middleware, WorkOS sign-in and sessions), OpenAPI contract validation or contract-first types, email, S3-compatible file storage, payments and webhooks, product analytics and feature flags, Temporal, Supabase, translations, outbound HTTP calls{{ if not .Postgres }}, a Postgres database{{ end }}{{ if not .Web }}, server-rendered HTML pages{{ end }}. Use it when a task needs one of these capabilities and the service does not import its module yet, even if gox is not mentioned. Not for work the service code already covers - plain JSON routes, hand-written field validation, parsing an uploaded file, config values or a new database URL (AGENTS.md covers those){{ if .Postgres }}, tables and queries, tables that store keys or tokens included (gox-postgres){{ end }}{{ if .Web }}, pages and forms (gox-web-ui){{ end }}, or background work (gox-background-work).
+description: Add a gox feature module or provider to this service, or wire one already in go.mod - authentication (JWT bearer tokens, identity-provider tokens, API-key auth middleware, WorkOS sign-in and sessions), OpenAPI contract validation or contract-first types, email, S3-compatible file storage, payments and webhooks, product analytics and feature flags, Temporal, Supabase, translations, outbound HTTP calls{{ if not .Postgres }}, a Postgres database{{ end }}{{ if not .Web }}, server-rendered HTML pages{{ end }}. Use it when a task needs one of these capabilities and the service does not import its module yet, even if gox is not mentioned. Not for work the service code already covers - plain JSON routes, hand-written field validation, parsing an uploaded file, config values{{ if .Postgres }}, tables and queries, tables that store keys or tokens included (gox-postgres){{ end }}{{ if .Web }}, pages and forms (gox-web-ui){{ end }}, or background work (gox-background-work).
 ---
 
 # Add a feature to {{ .Name }}
 
-Every gox feature is a module that is opted in by importing it and passing its
-option to `gox.New`. The steps are the same for all of them; the table below adds
-the recipe and the gotchas per feature. Recipes are `docs/recipes/<recipe>.md` in the
-gox module directory (AGENTS.md, "Look it up").
+A gox feature module is opted in by importing it and passing its `Enable` option
+to `gox.New`. The steps fit all of them; the table below adds the recipe and the
+gotchas per feature. Recipes are `docs/recipes/<recipe>.md` in the gox module
+directory (AGENTS.md, "Look it up").
 
 ## Steps
 
@@ -27,9 +27,10 @@ to get and no `Enable` or `From`: follow their recipe, then steps 5 and 6.
 3. Pass `<module>.Enable(...)` to `gox.MustNew` in `cmd/{{ .Name }}/main.go`. Also
    declare `gox.HTTPClient()` for mailgun, s3, stripe and workos: they call out on
    the app's client when it exists (timeouts, tracing, request ids).
-4. Read the value with `<module>.From(a)` in `main` after `gox.MustNew` and pass it
-   to the feature package: `invoices.Register(a, stripe.From(a))`. Handlers never
-   call `From` themselves, so tests pass `nil` or a fake.
+4. Read the value with `<module>.From(a)` (openapi and web have none) in `main`
+   after `gox.MustNew` and pass it to the feature package:
+   `invoices.Register(a, stripe.From(a))`. Handlers never call `From` themselves,
+   so tests pass `nil` or a fake.
 5. `go run ./cmd/{{ .Name }} --help` lists the new `{{ .Prefix }}_<MODULE>_*` variables.
    Add each one to `.env.example`. Secrets get `mask` when they are fields of your
    own `Config`.
@@ -51,7 +52,7 @@ to get and no `Enable` or `From`: follow their recipe, then steps 5 and 6.
 | Durable multi-step workflows | `providers/temporal` | `add-temporal-workflow` | Needs a Temporal server; choose it over `gox/jobs` with the gox-background-work skill. |
 | Supabase | `providers/supabase` | none | `supabase.From(a)` returns the client; `go doc` is the reference. |
 | Translations | root (`pkg/i18n`) | `translate-server-strings` | For strings the server owns (errors, mail, labels). |
-| Calls to another HTTP API | root | `call-external-api` | `gox.HTTPClient()` then `a.HTTPClient()`. Never mutate it; retries only for idempotent requests, on a second client from `pkg/httpclient`. Wrap failures: `gox.WrapError(err, gox.CodeUnavailable, "...")`. |
+| Calls to another HTTP API | root | `call-external-api` | `gox.HTTPClient()` then `a.HTTPClient()`. Retries only for idempotent requests, on a second client from `pkg/httpclient`. Wrap failures: `gox.WrapError(err, gox.CodeUnavailable, "...")`. |
 | Durable background jobs | `jobs` | `add-background-job` | Needs Postgres; use the gox-background-work skill. |
 {{- if not .Postgres }}
 | A Postgres database | `postgres` | `add-migration`, `add-postgres-query` | See "Postgres or pages later" below. |
@@ -62,34 +63,39 @@ to get and no `Enable` or `From`: follow their recipe, then steps 5 and 6.
 
 Webhooks from any provider: verify the signature with the provider's
 `VerifyWebhook`, answer quickly, and hand slow work to `gox/jobs`.
-{{- if .Web }} With web sessions on, a provider that posts a form (Mailgun inbound
-mail) is refused by the CSRF check: add its path prefix to
-`web.WithCSRFExempt("/webhooks/")`. JSON posts are never checked.
+{{- if .Web }}
+With web sessions on, a provider that posts a form (Mailgun inbound mail) is
+refused by the CSRF check: add its path prefix to `web.WithCSRFExempt("/webhooks/")`.
+JSON posts are never checked.
 {{- end }}
 {{- if or (not .Postgres) (not .Web) }}
 
 ## Postgres or pages later
 
-The scaffold has the wiring. Render a reference copy of this service with the
-feature, outside this directory, and copy what the feature adds:
+The scaffold has the wiring. Render a reference copy of this service with every
+feature it will have, outside this directory, and copy what the new one adds:
 
 ```
 go run github.com/guilhermebr/gox/cmd/gox new {{ .Name }} -module {{ .Module }} -postgres -web -dir /tmp/{{ .Name }}-ref
 ```
-{{- if not .Postgres }}
+{{- if and (not .Postgres) (not .Web) }}
 
-- Postgres: `migrations/`, the `postgres.Enable(postgres.WithMigrations(migrations.FS))`
-  option and its import, the POSTGRES lines of `.env.example`,
-  `.claude/skills/gox-postgres/`.
+Leave out the flag of a feature you are not adding.
 {{- end }}
-{{- if not .Web }}
+
+{{ if not .Postgres -}}
+- Postgres: `migrations/`, the `postgres.Enable(postgres.WithMigrations(migrations.FS))`
+  option and its import, the POSTGRES lines of `.env.example`.
+{{ end -}}
+{{ if not .Web -}}
 - HTML pages: `web/`, `static/`, `internal/home/` with `home.Register(a)` in place of
   the `GET /{$}` route, the `web.Enable(...)` option and its imports, the
   `github.com/a-h/templ` require line of `go.mod`, the Makefile's templ, htmx and
   Alpine versions and its `generate` and `assets` targets, the WEB lines of
-  `.env.example`, `.claude/skills/gox-web-ui/`.
-{{- end }}
-- Merge the reference `AGENTS.md` lines that mention the feature into this one.
+  `.env.example`.
+{{ end -}}
+- `AGENTS.md` and `.claude/skills/`: replace them with the reference copies (they
+  differ per feature), then re-apply your own edits to them.
 
 Then `go mod tidy`{{ if not .Web }}, `make assets`{{ end }} and `make test lint`.
 {{- end }}

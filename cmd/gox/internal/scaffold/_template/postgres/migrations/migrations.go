@@ -1,6 +1,7 @@
 // Package migrations embeds the SQL migration files. postgres.WithMigrations(FS)
-// runs them at boot on a dedicated connection; files are NNNN_name.up.sql
-// and NNNN_name.down.sql (golang-migrate layout).
+// runs them at boot on a dedicated connection; files are NNNNNN_name.up.sql
+// (golang-migrate layout). Only up migrations run; a NNNNNN_name.down.sql is
+// for resetting a local database by hand.
 package migrations
 
 import "embed"
