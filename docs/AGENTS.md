@@ -4,15 +4,13 @@ Deltas for `docs/`; the root AGENTS.md applies too.
 
 ## Who reads what
 
-- `docs/llm/*.md` → `llm.txt`, a single-file export: `make llm` joins every
-  `*.md` there (names below `50` before the API, the rest after) with the API
-  and variables of the packages listed in `cmd/gox/main.go`. Put nothing else
-  there; `make llm-check` fails on a stale `llm.txt`.
-- Doc comments → `go doc`. `llm.txt` keeps each exported declaration's
-  signature and first sentence, and no package comment. `conf` `help:` text →
-  `--help` and `llm.txt`.
-- The rules in `docs/llm/00-intro.md` and the Never list in
-  `docs/llm/80-conventions.md` are mirrored in
+- `docs/llm/*.md` → `llm.txt`: `make llm` joins every `*.md` there (names
+  below `50` before the API, the rest after) with the API and variables of
+  the packages listed in `cmd/gox/main.go`. Put nothing else there.
+- Doc comments → `go doc`. `llm.txt` keeps what `spec()` selects: signature
+  and first sentence (of `Deprecated:` if any). `conf` `help:` → `--help`, `llm.txt`.
+- Rules in `docs/llm/00-intro.md` and `80-conventions.md` that a service can
+  break are mirrored in
   `cmd/gox/internal/scaffold/_template/base/AGENTS.md.tmpl`: change both.
 - `docs/recipes/` → agents in generated services, through
   `docs/recipes/README.md` and the service skills.
@@ -38,5 +36,6 @@ Deltas for `docs/`; the root AGENTS.md applies too.
 - `docs/decisions/<NNNN>-<slug>.md`, the next free number, shaped like the
   newest ADR: `# NNNN — Title`, `Date:`, `Status: accepted`, then Context,
   Decision and Consequences sections.
-- Add its row to `docs/decisions/README.md`; an ADR that changes an earlier
-  decision also gets a note in the earlier one's row.
+- Add its row to `docs/decisions/README.md`. An ADR that changes an earlier
+  decision also gets a note in the earlier one's row, and the earlier ADR an
+  `Amended:` line under `Status:` (copy one).

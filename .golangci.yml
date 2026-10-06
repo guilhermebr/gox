@@ -1,6 +1,6 @@
 # golangci-lint v2 configuration shared by every module in this repository.
-# Run from a module directory: golangci-lint run --config ../.golangci.yml ./...
-# (the Makefile does this for you).
+# Run from a module directory with --config pointing here (the Makefile
+# passes the absolute path for you).
 #
 # depguard enforces the dependency direction (docs/decisions/0001-root-vs-feature-split.md,
 # 0008-providers-and-workos-sessions.md); scripts/check-lint-rules.sh proves it fires:

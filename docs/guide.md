@@ -176,12 +176,15 @@ binary with `--help` to see all of them with types, defaults and which
 option declared them:
 
 ```
-BILLING_HTTP_ADDR              (string)   listen address; PORT is honored when unset  [default :8080]
-BILLING_LOG_LEVEL              (string)   debug | info | warn | error                  [default info]
-BILLING_INVOICE_TTL            (duration) how long an open invoice may stay unpaid     [default 24h]
+ENVIRONMENT
+  BILLING_HTTP_ADDR         <string>                         listen address; default :8080 or :$PORT when PORT is set
+  BILLING_INVOICE_TTL       <duration>  (default: 24h)       how long an open invoice may stay unpaid
+  BILLING_LOG_LEVEL         <string>    (default: info)      debug | info | warn | error
+...
 # Section POSTGRES (declared by postgres.Enable())
-BILLING_POSTGRES_URL           (string)   required
-BILLING_POSTGRES_MIGRATE       (bool)     run embedded migrations at boot              [default true]
+...
+  BILLING_POSTGRES_MIGRATE  <bool>      (default: true)      run embedded migrations at boot (WithMigrations)
+  BILLING_POSTGRES_URL      <string>    (required)           postgres://user:pass@host:5432/db?sslmode=require
 ```
 
 Secrets carry `mask` and never appear in logs. Set `BILLING_LOG_LEVEL=debug`
@@ -205,11 +208,12 @@ is active.
 
 ## 6. Observability
 
-Traces and metrics are on locally without export. Set
-`BILLING_OTEL_ENDPOINT=collector:4317` (or `BILLING_OTEL_ENABLED=true` in
-production, where it is the default) to export over OTLP. Prometheus
-scrapes `:9090/metrics` regardless. Outbound calls made with
-`a.HTTPClient()` propagate trace context and the request id.
+Metrics are always collected, and Prometheus scrapes `:9090/metrics`.
+Traces are recorded only while export is on: set
+`BILLING_OTEL_ENDPOINT=collector:4317` to export traces and metrics over
+OTLP (export is on by default in production; `BILLING_OTEL_ENABLED=true` or
+`false` overrides). Outbound calls made with `a.HTTPClient()` propagate
+trace context and the request id.
 
 ## 7. Background work
 
@@ -244,4 +248,5 @@ token, `Asset(name)`). Forms follow one pattern: `web.Form[T]` to decode
 and validate, `web.RenderStatus(..., 422, ...)` to re-render with field
 errors, `web.AddFlash` + `web.Redirect` on success. Sessions are sealed
 cookies with CSRF on; `web.APIFrom(r)` calls the service's own API as the
-signed-in user. `examples/web` is the complete version of this section.
+signed-in user (`docs/recipes/call-backend-api.md`). `examples/web` is a
+complete app with the layout, form and flash parts of this section.

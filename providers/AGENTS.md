@@ -26,8 +26,3 @@ provider: `.claude/skills/gox-add-module/SKILL.md`.
     `S3_TEST_ACCESS_KEY_ID`, `S3_TEST_SECRET_ACCESS_KEY`: an S3-compatible
     server where the bucket exists (MinIO works).
   - `providers/temporal`: `TEMPORAL_ADDRESS` (`temporal server start-dev`).
-- Some provider go.mod files still require gox `v0.0.0` with `replace
-  github.com/guilhermebr/gox => ../../`, from before the root was tagged;
-  `git grep -l '^replace github.com/guilhermebr/gox' -- '*go.mod'` lists
-  them. Never copy one; releasing the module drops it
-  (`.claude/skills/gox-release/SKILL.md`).

@@ -17,50 +17,26 @@ cd gox
 
 A `go.work` file ties the modules together for local development, so `go
 build` and `go test` work from any module directory. The `Makefile` targets
-iterate over every module; CI runs `make ci` and `make test-integration`.
+iterate over every module.
 
 ## Development workflow
 
-Before opening a pull request, make sure the full check suite passes:
-
-```bash
-make ci          # the full check suite; `make help` lists the parts
-```
-
-Individual targets are also available (`make help` lists them):
-
-```bash
-make fmt              # gofumpt + goimports via golangci-lint
-make test             # tests with the race detector
-make test-integration # tests tagged `integration` (needs DATABASE_URL)
-make vet              # go vet
-make lint             # golangci-lint with the shared .golangci.yml
-make check-deps       # prove a root-only example links no feature dependency
-make check-lint-rules # prove each depguard dependency rule fires
-make vulncheck        # govulncheck
-make tidy             # go mod tidy in every module
-```
+Run `make ci` before opening a pull request; `make help` lists every target.
+CI also runs `make test-integration`, whose tests skip without their servers
+(see `AGENTS.md`).
 
 You'll need Go 1.26+, [`golangci-lint`](https://golangci-lint.run/) v2 at the
 version CI pins (`.github/workflows/ci.yml`; `AGENTS.md` has the install line),
-and [`govulncheck`](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) for
-the corresponding targets.
+`python3` (for `make check-recipes`), and
+[`govulncheck`](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) for
+`make vulncheck`.
 
 ## Guidelines
 
 - **Keep modules self-contained.** Use the Go standard library where possible;
   add external dependencies only when necessary.
-- **Document exported identifiers.** Every exported type, function, and method
-  needs a godoc comment that starts with its name.
-- **Test your changes.** Add table-driven tests for new behavior; tests must
-  pass with `-race`.
-- **Respect the dependency direction** listed in `AGENTS.md`. `depguard`
-  enforces it; see `docs/decisions/0001-root-vs-feature-split.md` for why.
 - **Adding a feature package or provider?** Follow
   `.claude/skills/gox-add-module/SKILL.md`; `docs/features.md` explains the code.
-- **Match the config pattern.** Configuration uses `github.com/ardanlabs/conf/v3`;
-  feature packages register a config section under the service prefix.
-- **Format before committing.** `make fmt`.
 
 ## Pull requests
 
@@ -70,6 +46,6 @@ the corresponding targets.
 
 ## Releases
 
-Modules are versioned independently using module-path tags, e.g.
-`postgres/v0.2.0`, `web/v0.1.0`. The order and the checks are in
-`.claude/skills/gox-release/SKILL.md`.
+Modules are versioned independently: `vX.Y.Z` for the root,
+`<module>/vX.Y.Z` for the rest (`git tag -l` lists them). The order and the
+checks are in `.claude/skills/gox-release/SKILL.md`.

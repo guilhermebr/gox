@@ -1,7 +1,6 @@
 # AGENTS.md: changing gox itself
 
-Building a service on gox? Follow the `AGENTS.md` that `gox new` generated
-in it instead.
+Building a service on gox? Use the `AGENTS.md` that `gox new` generated.
 
 ## Read first for your task
 
@@ -53,7 +52,7 @@ docs/                 llm/ (llm.txt sources), recipes/, decisions/ (ADRs)
 ## Rules
 
 - Test first. Every exported function has a test that failed before the code existed.
-- Every exported identifier has a doc comment; `llm.txt` keeps only its first sentence, so make that the useful one.
+- Every exported identifier has a doc comment; `llm.txt` keeps only its first sentence (or its `Deprecated:` one), so make that the useful one.
 - One way to do each thing: no alias, no second constructor, no option that duplicates config.
 - Every panic and startup error names the fix: `gox: postgres.From called but postgres.Enable() was not passed to gox.New`, `BILLING_POSTGRES_URL is required`.
 - Config is struct fields with `conf` tags, never `os.Getenv`. Secrets carry `mask`. `help:` text has no commas (conf splits tag options on commas).

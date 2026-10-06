@@ -30,7 +30,7 @@ git fetch --tags origin
 git tag -l --sort=-v:refname                        # every release; root tags are plain vX.Y.Z
 git tag -l 'v*' --sort=-v:refname | head -1         # newest root tag
 git tag -l '<dir>/v*' --sort=-v:refname | head -1   # newest tag of one module; empty: never released
-git grep -l '^replace github.com/guilhermebr/gox' -- '*go.mod'   # never released
+git grep -l '^replace github.com/guilhermebr/gox' -- '*go.mod'   # never released, of the modules that require gox
 ```
 
 - Only tags on origin count: a tag that `git ls-remote --tags origin` does

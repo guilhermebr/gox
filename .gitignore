@@ -3,3 +3,5 @@ bin/
 *.out
 .env
 examples/recipes_build/
+.claude/worktrees/
+.claude/settings.local.json

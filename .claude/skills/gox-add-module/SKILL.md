@@ -119,13 +119,17 @@ Use an external test package (`package <name>_test`) and copy `quiet` and
 5. **Service skill**: a row in the "Per feature" table of
    `cmd/gox/internal/scaffold/_template/base/.claude/skills/gox-add-feature/SKILL.md.tmpl`
    (need, module, recipe, gotchas). Name a new kind of capability in its
-   description too, which must stay within 1024 characters. Generated
-   services copy this file: no versions or signatures in it.
+   description and in the capability list under "Read first for your task"
+   in `cmd/gox/internal/scaffold/_template/base/AGENTS.md.tmpl`. The
+   description has little room left under its 1024 characters (`make
+   check-agent-docs` counts the raw template): shorten an existing phrase if
+   yours does not fit. Generated services copy these files: no versions or
+   signatures in them.
 6. **ADR**: `docs/decisions/<NNNN>-<slug>.md`, NNNN one above the last of
    `ls docs/decisions/0*.md`, saying why this dependency and this design;
    format in `docs/AGENTS.md`; its row in `docs/decisions/README.md`.
 7. **Provider**: a row in `providers/README.md`.
-8. **Sweep**: `grep -rl --exclude-dir=.git posthog .` (a provider;
+8. **Sweep**: `git grep -l posthog` (a provider;
    `openapi` for a feature, `monetary` for a library) lists every file that
    names a sibling. Add yours wherever the sibling appears in a list of
    modules.

@@ -51,12 +51,13 @@ func main() {
 }
 ```
 
-Run it and you have structured JSON logs with request ids, traces, Prometheus
-metrics on `:9090/metrics`, `/healthz` and `/readyz` on both ports, pprof, a
-per-request timeout and body limit, one error envelope for everything, and a
-graceful drain on SIGTERM. You wrote none of that.
+Run it and you have structured logs (JSON in production) with request ids,
+Prometheus metrics on `:9090/metrics`, OpenTelemetry traces once export is on
+(production, or an OTLP endpoint), `/healthz` and `/readyz` on both ports,
+pprof, a per-request timeout and body limit, one error envelope for
+everything, and a graceful drain on SIGTERM. You wrote none of that.
 
-## A service with Postgres, two imports
+## A service with Postgres, two gox imports
 
 ```go
 package main
@@ -66,7 +67,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -77,15 +77,8 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-type Config struct {
-	gox.BaseConfig
-	InvoiceTTL time.Duration `conf:"default:24h"`
-}
-
 func main() {
-	var cfg Config
 	a := gox.MustNew("billing",
-		gox.WithConfig(&cfg),
 		gox.HTTP(),
 		postgres.Enable(postgres.WithMigrations(migrations)),
 	)
@@ -113,10 +106,11 @@ func main() {
 
 With `BILLING_POSTGRES_URL` set: the pool pings at boot (a lazy pool never
 reports healthy), the migration runs on a dedicated connection before
-`/readyz` turns green, queries are traced, pool stats are exported, and the
-pool closes last on shutdown.
+`/readyz` turns green, queries are traced once OTEL export is on, pool stats are exported, and the
+pool closes last on shutdown. `examples/postgres` is the complete version,
+with a POST that maps a duplicate id to 409.
 
-A server-rendered HTML app on templ is the same shape with `gox/web`; see
+A server-rendered HTML app on templ adds `gox/web` the same way; see
 `examples/web`.
 
 ## The opinions
@@ -133,7 +127,7 @@ its `README.md` indexes them.
 | coded errors with a public-safe message and one JSON envelope | clients see one shape from handlers and the framework alike; causes go to logs, never to clients (ADR 0004) |
 | an explicit staged lifecycle, no DI container | start order is fixed by stage, readable, and shutdown is the exact reverse (ADR 0002) |
 | pgx plus golang-migrate on a dedicated connection | what every consumer already used, minus the incident that starved a pool under a rolling deploy (ADR 0006) |
-| templ, Alpine.js, HTMX 2, Tailwind standalone CLI, embedded hashed assets | what the existing HTML apps converged on; no Node at build or run time (ADR 0007) |
+| templ, Alpine.js, HTMX 2, embedded hashed assets | what the existing HTML apps converged on; no Node at build or run time (ADR 0007) |
 | nested modules, one per feature | a consumer's module graph contains only what it imports (ADR 0000) |
 
 ## Escape hatches
@@ -148,21 +142,17 @@ its `README.md` indexes them.
 
 ## Writing a feature package
 
-Every feature has the same shape: `Config`, `Enable(opts...) gox.Option`,
-`From(a) T`, `With*` options. Inside `Enable`, the `gox.Builder` gives you
-`ConfigSection`, `Component`, `Setup`, `Finish`, `Middleware`,
-`ErrorRenderer` and `Set`. `docs/features.md` walks through one.
-
-Building blocks a service is made of (`postgres`, `web`, ...) live at the
-top level, one module each. Clients for third-party services live under
-`providers/`, one module each; `providers/README.md` lists them. Adding
-either follows one checklist: `.claude/skills/gox-add-module/SKILL.md`.
+A feature is opted in by passing its `Enable` option to `gox.New`; most also
+have a `Config` section and a `From(a)` accessor. Building blocks (`postgres`,
+`web`, ...) live at the top level and third-party clients under `providers/`
+(`providers/README.md` lists them), one module each. `docs/features.md` walks
+through one; adding one follows `.claude/skills/gox-add-module/SKILL.md`.
 
 ## Start a service
 
 ```
 go install github.com/guilhermebr/gox/cmd/gox@latest
-gox new billing --module github.com/acme/billing --postgres --web
+gox new billing --module github.com/acme/billing --postgres
 cd billing && make run
 ```
 
@@ -170,9 +160,11 @@ cd billing && make run
 `.env.example`, a Makefile, a distroless Dockerfile, a lint config, a CI
 workflow, `AGENTS.md`, `CLAUDE.md` and agent skills under `.claude/skills/`.
 `--postgres` adds a `migrations` package and `postgres.Enable`; `--web` adds
-a templ layout, a home page and embedded static assets. The result builds,
-tests, runs and answers `/healthz` with zero edits; a test in this
-repository proves it on every commit.
+a templ layout, a home page and embedded static assets. On every commit a
+test in this repository renders the plain, web and postgres+web services
+against the working tree and checks that they build and pass their tests, and
+that plain and web start and answer `/healthz` (postgres+web too with
+`DATABASE_URL`).
 
 ## Documentation
 
@@ -187,8 +179,8 @@ repository proves it on every commit.
 ## Versioning
 
 Semantic versioning per module: `v0.x.y` for the root, `postgres/v0.x.y`
-for a feature. Public API is deprecated for one minor version before it is
-removed.
+for a feature. A renamed or removed public API keeps its old name as a
+`// Deprecated:` wrapper for one minor version (`AGENTS.md`).
 
 ## Utilities
 

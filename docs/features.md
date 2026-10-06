@@ -1,8 +1,10 @@
 # Write a feature package
 
 A feature package adds a heavy integration to gox without touching the
-root: a service imports it and passes its `Enable()` option to `gox.New`.
-Every feature has the same shape, so a model that learned one learned all:
+root: a service imports it and passes its `Enable` option to `gox.New`. Most
+features also have a `Config` section and a `From(a)` accessor; the
+exceptions are `jobs` (`Enable` takes `postgres.From`), `openapi` (no
+`Config` or `From`) and `web` (no `From`). This page builds the usual shape:
 
 ```go
 package redis // github.com/guilhermebr/gox/redis
@@ -10,19 +12,15 @@ package redis // github.com/guilhermebr/gox/redis
 type Config struct { ... }                 // the REDIS config section
 type Option func(*options)                 // With* options for Enable
 func Enable(opts ...Option) gox.Option     // registers the section and a component
-func From(a *gox.App) *redis.Client        // panics with the standard message if not enabled
+func From(a *gox.App) *goredis.Client      // panics with the standard message if not enabled
 ```
 
 ## 1. The module
 
 Each feature is its own module so a consumer's module graph only carries
-what it imports (ADR 0000). Building blocks a service is made of (a
-datastore, auth, HTML) live at the top level; a client for a third-party
-service (a cloud or SaaS API) lives under `providers/<name>`.
-
-Creating the module and wiring it into the repository follow one
-checklist, `.claude/skills/gox-add-module/SKILL.md`; this page walks
-through the code.
+what it imports (ADR 0000). Choosing where it lives, creating the module and
+wiring it into the repository follow one checklist,
+`.claude/skills/gox-add-module/SKILL.md`; this page walks through the code.
 
 ## 2. Config
 
@@ -149,22 +147,6 @@ other services), `StageUser` (the service's own components), `StageServer`
 
 ## 4. Tests
 
-Test through a real app. Every feature has at least these:
-
-```go
-func TestEnableRequiresURL(t *testing.T) {
-	_, err := gox.New("billing", gox.WithoutAdminServer(), gox.WithLogger(quiet()), redis.Enable())
-	// err mentions BILLING_REDIS_URL, "required" and "redis.Enable()"
-}
-
-func TestFromPanicsWithTheStandardMessage(t *testing.T) {
-	// "gox: redis.From called but redis.Enable() was not passed to gox.New"
-}
-
-func TestHelpListsTheSection(t *testing.T) {
-	// --help usage contains BILLING_REDIS_URL and "redis.Enable()"
-}
-```
-
-Integration tests run behind `//go:build integration` against an address
-from the environment.
+Test through a real `gox.New`. Step 4 of
+`.claude/skills/gox-add-module/SKILL.md` lists the tests a new module needs;
+`postgres/postgres_test.go` is the model.

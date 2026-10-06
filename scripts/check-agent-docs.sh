@@ -9,7 +9,8 @@
 # CLAUDE.md exists (it can stop AGENTS.md from loading), when a path it names
 # does not exist, when the recipe or ADR index and its directory disagree, or
 # when a skill's name differs from its directory or its description is
-# missing or over 1024 characters.
+# missing or over 1024 characters, or when the golangci-lint version AGENTS.md
+# names differs from the CI pin.
 #
 # A path is a name with a / that ends in .md or .md.tmpl (a <placeholder> is
 # not one), resolved from the repo root or from the naming file's directory.
@@ -113,6 +114,14 @@ for f in $(files -name SKILL.md -o -name SKILL.md.tmpl); do
 	[ "$name" = "$dir" ] || bad "$f: frontmatter name is '$name': set 'name: $dir' between --- lines at the top"
 	[ -n "$desc" ] || bad "$f: frontmatter has no description: add one that says what the skill does and when to use it"
 	[ "$chars" -le 1024 ] || bad "$f: description is $chars characters: cut it to 1024"
+done
+
+# Lint version: AGENTS.md tells agents which golangci-lint to install; CI's
+# pin is the source of truth.
+pin=$(awk '/GOLANGCI_LINT_VERSION:/ { print $2; exit }' .github/workflows/ci.yml)
+[ -n "$pin" ] || bad ".github/workflows/ci.yml has no GOLANGCI_LINT_VERSION: restore it or update this check"
+for v in $(grep -oE 'golangci-lint[@ ]v[0-9][0-9.]*' AGENTS.md | sed -E 's/.*[@ ]//; s/[.]+$//' | sort -u); do
+	[ "$v" = "$pin" ] || bad "AGENTS.md names golangci-lint $v but .github/workflows/ci.yml pins $pin: make them agree"
 done
 
 [ "$fail" = 1 ] || echo "ok: agent docs are within budget and in place, and every path and index entry they name exists"

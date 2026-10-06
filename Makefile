@@ -1,6 +1,7 @@
 # gox is a multi-module repository: the root module plus one module per
-# feature package and one for examples. Every target below iterates over all
-# of them so `make ci` is the single command CI and contributors run.
+# feature, provider and utility, and one for examples (go.work lists them).
+# Every target below iterates over all of them so `make ci` is the single
+# command CI and contributors run.
 
 MODULES := $(shell find . -name go.mod -not -path './.git/*' -not -path './.claude/*' -exec dirname {} \; | sort)
 LINT_CONFIG := $(CURDIR)/.golangci.yml
@@ -25,7 +26,7 @@ build:
 test:
 	$(call foreach_module,go test ./... -race -count=1)
 
-## test-integration: run tests tagged `integration` (needs DATABASE_URL pointing at a throwaway database the tests own)
+## test-integration: run tests tagged `integration`; each skips without its server (DATABASE_URL a throwaway database the tests own; S3_TEST_*; TEMPORAL_ADDRESS)
 test-integration:
 	$(call foreach_module,go test ./... -race -count=1 -tags integration)
 
