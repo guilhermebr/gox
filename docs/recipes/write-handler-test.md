@@ -34,19 +34,22 @@ func main() {
 package main
 
 import (
+	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/guilhermebr/gox"
 )
 
-// newApp builds the service without the admin server or log output. The
-// mux is served through httptest, so no port is opened.
-func newApp(t *testing.T) http.Handler {
+// newApp builds the service without the admin server (it would bind :9090)
+// or log output.
+func newApp(t *testing.T) *gox.App {
 	t.Helper()
 	a, err := gox.New("billing",
 		gox.WithoutAdminServer(),
@@ -57,11 +60,13 @@ func newApp(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	Register(a)
-	return a.Mux()
+	return a
 }
 
+// TestGetInvoice serves the bare mux through httptest: no port, no
+// middleware chain.
 func TestGetInvoice(t *testing.T) {
-	h := newApp(t)
+	h := newApp(t).Mux()
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/invoices/inv_1", nil))
@@ -75,6 +80,48 @@ func TestGetInvoice(t *testing.T) {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}
 }
+
+// TestThroughTheChain runs the server, so the middleware applies: request
+// ids, timeouts, envelope 404s for unmatched routes.
+func TestThroughTheChain(t *testing.T) {
+	// Pick a free port first: with 127.0.0.1:0 the test cannot learn the port.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close()
+	t.Setenv("BILLING_HTTP_ADDR", addr)
+
+	a := newApp(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.RunContext(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("RunContext: %v", err)
+		}
+	})
+	for deadline := time.Now().Add(5 * time.Second); !a.Health().IsReady(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the app did not become ready")
+		}
+	}
+
+	resp, err := http.Get("http://" + addr + "/nope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound || resp.Header.Get("X-Request-ID") == "" || !strings.Contains(string(body), `"code":"not_found"`) {
+		t.Fatalf("got %d %s", resp.StatusCode, body)
+	}
+}
 ```
 
-Serving `a.Mux()` directly skips the middleware chain (request ids, timeouts, envelope 404s). To test through the chain, run the app on a free port with `a.RunContext(ctx)` in a goroutine, wait for `a.Health().IsReady()`, and use `http.Get`.
+Handlers on gox/web (`web.Render`, `web.PageFrom`, `web.AddFlash`) panic on a
+bare `a.Mux()`: add `web.Enable()` to `newApp` and test them through the chain.
+Without `web.WithSessions()` there is no CSRF check, so a test can post a form;
+a client whose `CheckRedirect` returns `http.ErrUseLastResponse` sees the 303.

@@ -59,6 +59,10 @@ func main() {
 			}
 			items = append(items, inv)
 		}
+		if err := rows.Err(); err != nil { // a failed query shows up here, not from Query
+			gox.Error(w, r, err)
+			return
+		}
 		var next *string
 		if len(items) > page.Limit {
 			items = items[:page.Limit]

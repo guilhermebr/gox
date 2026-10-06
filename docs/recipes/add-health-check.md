@@ -36,7 +36,9 @@ func main() {
 	// Liveness: should this process be restarted? Fails /healthz (503).
 	a.Health().AddLiveness("not-deadlocked", func(context.Context) error { return nil })
 
-	// A platform that probes another path (/up, /health, /livez): mount the same handler there.
+	// A platform that probes another path (/up, /health, /livez): mount the same
+	// handler there. jwt.WithAuth() exempts only /healthz and /readyz, so with
+	// app-wide auth point the platform at those or let the extra path through.
 	a.Mux().Handle("GET /up", a.Health().LivenessHandler())
 
 	if err := a.Run(); err != nil {

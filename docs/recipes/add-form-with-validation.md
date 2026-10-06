@@ -57,7 +57,7 @@ func main() {
 	a.HandleFunc("POST /signup", func(w http.ResponseWriter, r *http.Request) {
 		in, ferrs, err := web.Form[views.SignInput](r)
 		if err != nil {
-			web.Error(w, r, err) // not a form body
+			gox.Error(w, r, err) // not a form body; an error page for a browser
 			return
 		}
 		if ferrs != nil {

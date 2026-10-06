@@ -18,9 +18,10 @@ func main() {
 	// endpoint below. gox.HTTPClient() gives the SDK the app's outbound client:
 	// timeouts, tracing, request-id propagation.
 	a := gox.MustNew("shop", gox.HTTP(), gox.HTTPClient(), stripe.Enable())
+	sc := stripe.From(a) // read once here, never inside a handler
 
 	a.HandleFunc("POST /customers", func(w http.ResponseWriter, r *http.Request) {
-		cus, err := stripe.From(a).V1Customers.Create(r.Context(), &sdk.CustomerCreateParams{Email: sdk.String("ana@example.com")})
+		cus, err := sc.V1Customers.Create(r.Context(), &sdk.CustomerCreateParams{Email: sdk.String("ana@example.com")})
 		if err != nil {
 			gox.Error(w, r, gox.WrapError(err, gox.CodeUnavailable, "the customer could not be created"))
 			return
@@ -51,5 +52,4 @@ func main() {
 ```
 
 Every provider with webhooks follows this shape: `workos.VerifyWebhook`,
-`mailgun.VerifyWebhook`, `mailgun.ParseInbound`. Do slow work in a
-`gox/jobs` worker and answer the webhook quickly.
+`mailgun.VerifyWebhook`, `mailgun.ParseInbound`.

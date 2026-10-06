@@ -16,7 +16,7 @@ gox repository. Read only the recipe for your task.
 ## HTTP and errors
 
 - JSON endpoint: path values, decode a body, answer 404 or 400 → add-http-route.md
-- Test a handler without opening a port → write-handler-test.md
+- Test a handler: the bare mux without a port, or through the middleware chain (gox/web handlers need it) → write-handler-test.md
 - RFC 9457 problem+json errors instead of the default envelope → problem-json-errors.md
 - Reject requests an OpenAPI document does not allow → validate-requests-with-openapi.md [openapi]
 - Contract first: OpenAPI document, generated types, handlers → start-from-a-contract.md [openapi]
@@ -26,7 +26,7 @@ gox repository. Read only the recipe for your task.
 ## Data (Postgres)
 
 - Create or change tables: SQL migrations run at boot → add-migration.md [postgres]
-- Query, map no rows to 404, run a transaction → add-postgres-query.md [postgres]
+- Query, map no rows to 404 and a duplicate key to 409, run a transaction → add-postgres-query.md [postgres]
 - Paginate a list with a cursor (keyset, not offset) → paginate-a-list.md [postgres]
 
 ## Pages (server-rendered HTML)
@@ -47,7 +47,7 @@ gox repository. Read only the recipe for your task.
 ## Auth
 
 - JWT bearer tokens on every route or some; issuing tokens; API keys → add-auth.md [jwt]
-- Accept an identity provider's tokens (Auth0, Okta, Keycloak, Cognito, Entra) through JWKS → verify-identity-provider-tokens.md [jwt]
+- Accept an identity provider's tokens (Auth0, Okta, Keycloak, Cognito, Entra) through JWKS, and check the audience → verify-identity-provider-tokens.md [jwt]
 - Sign-in with WorkOS AuthKit: login, sessions, organizations, identity webhooks → add-workos-login.md [providers/workos]
 
 ## Integrations
@@ -63,5 +63,6 @@ gox repository. Read only the recipe for your task.
 - Readiness and liveness checks; a platform's own probe path → add-health-check.md
 - Rate-limit a route (login, signup) and log the real client IP behind a proxy → protect-a-login-route.md
 
-No recipe yet: CORS (`go doc github.com/guilhermebr/gox.WithCORS`) and
-Supabase (`go get` it, then `go doc github.com/guilhermebr/gox/providers/supabase`).
+No recipe yet: CORS (`go doc github.com/guilhermebr/gox.WithCORS`; its fields:
+`go doc github.com/guilhermebr/gox/pkg/middleware.CORSConfig`) and Supabase
+(`go get` it, then `go doc github.com/guilhermebr/gox/providers/supabase`).

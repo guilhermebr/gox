@@ -1,8 +1,6 @@
 # Run Temporal workflows (durable, multi-step processes)
 
-Use `gox/jobs` for single tasks that run later and retry. Use Temporal when
-a process has several steps, waits for days or for a signal, or must
-compensate earlier steps; the engine records every step and resumes after a
+The Temporal engine records every step of a workflow and resumes it after a
 crash or a deploy.
 
 ```go path=main.go
@@ -45,6 +43,7 @@ func main() {
 	// Temporal Cloud: BILLING_TEMPORAL_API_KEY, or TLS_CERT and TLS_KEY for mTLS.
 	// An API next to a separate worker binary sets BILLING_TEMPORAL_WORK=false.
 	a := gox.MustNew("billing", gox.HTTP(), temporal.Enable())
+	tc := temporal.From(a) // read once here; handlers take the client, not the app
 
 	// One worker per task queue; the app starts it and, on shutdown, lets
 	// running activities finish within the shutdown timeout.
@@ -56,7 +55,7 @@ func main() {
 	a.HandleFunc("POST /customers/{id}/onboarding", func(rw http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		// A deterministic workflow id makes the call idempotent.
-		run, err := temporal.From(a).ExecuteWorkflow(r.Context(),
+		run, err := tc.ExecuteWorkflow(r.Context(),
 			client.StartWorkflowOptions{ID: "onboard-" + id, TaskQueue: "onboarding"}, Onboard, id)
 		if err != nil {
 			gox.Error(rw, r, gox.WrapError(err, gox.CodeUnavailable, "could not start the onboarding"))

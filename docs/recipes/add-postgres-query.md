@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/postgres"
@@ -48,6 +49,11 @@ func main() {
 			_, err := tx.Exec(r.Context(), "INSERT INTO invoices (id, amount) VALUES ($1, $2)", in.ID, in.Amount)
 			return err // non-nil rolls back
 		})
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation, on INSERT or UPDATE
+			gox.Error(w, r, gox.AlreadyExists("invoice %s", in.ID)) // 409
+			return
+		}
 		if err != nil {
 			gox.Error(w, r, err)
 			return

@@ -12,8 +12,10 @@ import (
 )
 
 func main() {
-	// BILLING_JWT_SECRET_KEY (HS256), BILLING_JWT_PUBLIC_KEY (RS256) or BILLING_JWT_JWKS_URL
-	// (an identity provider, see verify-identity-provider-tokens.md) configures the service.
+	// BILLING_JWT_SECRET_KEY (HS256), BILLING_JWT_PUBLIC_KEY (RS256, plus
+	// BILLING_JWT_PRIVATE_KEY on the service that issues tokens) or
+	// BILLING_JWT_JWKS_URL (an identity provider, see
+	// verify-identity-provider-tokens.md) configures the service.
 	// jwt.WithAuth() protects every route except /healthz and /readyz with a 401 envelope.
 	a := gox.MustNew("billing", gox.HTTP(), jwt.Enable(jwt.WithAuth()))
 
@@ -43,7 +45,8 @@ import (
 
 func main() {
 	a := gox.MustNew("billing", gox.HTTP(), jwt.Enable())
-	auth := jwt.Auth(jwt.From(a))
+	tokens := jwt.From(a) // read once here; handlers take the service, not the app
+	auth := jwt.Auth(tokens)
 
 	a.HandleFunc("GET /public", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("hi")) })
 	a.Mux().Handle("GET /private", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +55,7 @@ func main() {
 	})))
 
 	a.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
-		token, err := jwt.From(a).GenerateToken("u1", "u1@example.com", "user")
+		token, err := tokens.GenerateToken("u1", "u1@example.com", "user")
 		if err != nil {
 			gox.Error(w, r, err)
 			return
@@ -66,7 +69,7 @@ func main() {
 }
 ```
 
-API keys or opaque tokens: `middleware.Bearer(validate)` from `github.com/guilhermebr/gox/pkg/middleware`, where `validate(ctx, token) (principal any, err error)` looks the token up; read the principal with `middleware.Principal(ctx)`. It exempts no path: wrap the handlers that need it, as below. Passed to `gox.WithAuth` it would also answer 401 on `/healthz` and `/readyz`, so such a wrapper must let those two through first, as `jwt.WithAuth()` does.
+API keys or opaque tokens: `middleware.Bearer(validate)` from `github.com/guilhermebr/gox/pkg/middleware`, where `validate(ctx, token) (principal any, err error)` looks the token up; read the principal with `middleware.Principal(ctx)`. It exempts no path (`go doc github.com/guilhermebr/gox/pkg/middleware.Bearer`): wrap the handlers that need it, as below.
 
 ```go path=apikey/main.go
 package main

@@ -73,10 +73,10 @@ import _ "embed"
 var Spec []byte
 ```
 
-`-generate types` and nothing else. The `std-http-server` target would also emit
-`HandlerFromMux`, and the service would then have two ways to register a route;
-handlers stay plain `http.HandlerFunc` on the app's mux. Pin the generator
-version: `@latest` makes the output depend on the day it ran.
+`-generate types` and nothing else: routes are registered with `a.HandleFunc`,
+so a generated router (`std-http-server`, ogen) would be a second way to mount
+one. Pin the generator version: `@latest` makes the output depend on the day it
+ran.
 
 What the command produces, for reference — never edit it:
 
@@ -134,8 +134,9 @@ func Register(a *gox.App) {
 }
 
 // createInvoice takes the body type generated from the contract. The body is
-// already valid: openapi.Enable rejected anything the document forbids, so
-// Decode only fails on malformed JSON.
+// already valid: openapi.Enable rejected anything the document forbids,
+// malformed JSON included, so Decode does not fail here. Keep the check: it
+// guards the route if the document stops describing it.
 func (h *handler) createInvoice(w http.ResponseWriter, r *http.Request) {
 	var in api.CreateInvoiceJSONRequestBody
 	if err := gox.Decode(r, &in); err != nil {
@@ -195,9 +196,10 @@ import (
 )
 
 func main() {
-	// openapi.Enable goes last. An authenticating option passed before it
-	// answers anonymous callers with a 401 rather than a description of the
-	// contract.
+	// Features run in the order they are passed: put an authenticating one,
+	// such as jwt.Enable(jwt.WithAuth()), before openapi.Enable so anonymous
+	// callers get a 401 rather than a description of the contract.
+	// gox.WithAuth runs after every feature, so validation comes first with it.
 	a := gox.MustNew("shop", gox.HTTP(), openapi.Enable(api.Spec))
 
 	invoices.Register(a)
@@ -228,8 +230,3 @@ webhook, pass through untouched and need no entry.
 - Validate responses in tests, not in production traffic.
 - `gox.WithErrorRenderer(gox.ProblemJSON)` when the contract declares problem
   details for errors — see `problem-json-errors.md`.
-
-A generator that emits its own router and handler signature, such as ogen, buys
-compile-time routing at the cost of a second router, a second error model and a
-second middleware API inside one binary. Types-only keeps the contract on the
-payloads, where the drift actually happens, and leaves `net/http` alone.

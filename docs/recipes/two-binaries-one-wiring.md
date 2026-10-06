@@ -5,20 +5,34 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/postgres"
 )
 
-// Config is shared by every binary. Role only matters to the single-binary
-// main at the end of this recipe; the api and worker binaries ignore it.
+// Config is shared by every binary. Only the single-binary main at the end
+// of this recipe acts on Role.
 type Config struct {
 	gox.BaseConfig
 	SyncEvery time.Duration `conf:"default:5m"`
 	Role      string        `conf:"default:all,help:all | api | worker"`
+}
+
+// Validate refuses a role no main acts on, so a typo cannot start a binary
+// that serves nothing.
+func (c *Config) Validate() error {
+	switch c.Role {
+	case "all", "api", "worker":
+		return nil
+	}
+	return fmt.Errorf("BILLING_ROLE must be all, api or worker, got %q", c.Role)
 }
 
 // Base is what every binary of the service is made of.
@@ -31,17 +45,22 @@ func Routes(a *gox.App) {
 	db := postgres.From(a)
 	a.HandleFunc("GET /invoices/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var id string
-		if err := db.QueryRow(r.Context(), "SELECT id FROM invoices WHERE id = $1", r.PathValue("id")).Scan(&id); err != nil {
+		err := db.QueryRow(r.Context(), "SELECT id FROM invoices WHERE id = $1", r.PathValue("id")).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
 			gox.Error(w, r, gox.NotFound("invoice %s", r.PathValue("id")))
+			return
+		}
+		if err != nil {
+			gox.Error(w, r, err)
 			return
 		}
 		_ = gox.JSON(w, http.StatusOK, map[string]string{"id": id})
 	})
 }
 
-// Sync is the workers' periodic job. gox.Periodic takes its interval when
-// the option list is built, before New loads config, so the caller reads
-// it first with gox.LoadConfig (see the mains below).
+// Sync is the workers' periodic job. Every worker replica runs it: run one
+// replica, or use gox/jobs (add-background-job.md) for work that must run
+// once, with BILLING_JOBS_WORK=false on the API binary.
 func Sync(every time.Duration) gox.Option {
 	return gox.Periodic("sync", every, func(ctx context.Context) error {
 		slog.InfoContext(ctx, "syncing")
@@ -85,9 +104,8 @@ import (
 
 func main() {
 	var cfg app.Config
-	// Do not exit when LoadConfig fails: it also fails for --help and
-	// --version, and MustNew loads the same struct, prints why and exits.
-	// The placeholder never runs; it must be above zero.
+	// The interval comes from config before New: add-periodic-job.md,
+	// "Interval from config".
 	every := 5 * time.Minute
 	if err := gox.LoadConfig("billing", &cfg); err == nil {
 		every = cfg.SyncEvery
@@ -102,9 +120,7 @@ func main() {
 ```
 
 One binary that picks its role from the environment uses the same wiring:
-`gox.LoadConfig` reads the struct `New` will load, so the role can decide the
-option list before the app exists. Never exit on its error (`--help` returns
-one too): `MustNew` loads the same struct, then prints the help or the error.
+`gox.LoadConfig` reads the role before the app exists, as in `cmd/worker`.
 
 ```go path=cmd/shop/main.go
 package main
@@ -120,7 +136,7 @@ import (
 
 func main() {
 	var cfg app.Config
-	every := 5 * time.Minute // placeholder, as in cmd/worker
+	every := 5 * time.Minute
 	if err := gox.LoadConfig("billing", &cfg); err == nil {
 		every = cfg.SyncEvery
 	}

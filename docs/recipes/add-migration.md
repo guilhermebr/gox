@@ -54,5 +54,8 @@ func main() {
 ```
 
 Moving a service off another framework that already owns `schema_migrations`
-(Rails, Django, Laravel): set `BILLING_POSTGRES_MIGRATIONS_TABLE=service_migrations`
-and start from a baseline migration dumped from the existing schema.
+(Rails, Phoenix, dbmate, or another golang-migrate service): set
+`BILLING_POSTGRES_MIGRATIONS_TABLE=service_migrations` and start from a baseline
+migration dumped from the existing schema. A deploy step that calls
+`postgres.Migrate` reads no environment: pass it
+`postgres.WithMigrationsTable("service_migrations")` too.

@@ -18,7 +18,8 @@ type rate struct {
 
 func main() {
 	// gox.HTTPClient(): timeouts and pool limits from BILLING_HTTP_CLIENT_*,
-	// User-Agent billing/<version>, request id and trace context propagated.
+	// User-Agent billing (billing/<version> with gox.WithVersion), request id
+	// and trace context propagated.
 	a := gox.MustNew("billing", gox.HTTP(), gox.HTTPClient())
 	client := a.HTTPClient()
 
@@ -49,4 +50,4 @@ func main() {
 }
 ```
 
-Retries are opt-in and only for idempotent requests: build a second client with `httpclient.New(cfg, httpclient.WithRetry(3, 200*time.Millisecond))` from `github.com/guilhermebr/gox/pkg/httpclient`.
+Retries are opt-in and only for idempotent requests: build a second client from `github.com/guilhermebr/gox/pkg/httpclient` with `httpclient.New(httpclient.Config(a.Config().HTTPClient), httpclient.WithUserAgent("billing"), httpclient.WithRetry(3, 200*time.Millisecond))`.
