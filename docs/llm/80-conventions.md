@@ -14,7 +14,7 @@ Log keys (contract with dashboards): `request_id`, `trace_id`, `span_id`, `error
 
 Metrics (Prometheus on the admin `/metrics`): `http_server_request_duration_seconds` and `http_server_active_requests` by `http_request_method`, `http_route`, `http_response_status_code`; `db_client_connection_count{state}` and `db_client_connection_max` with `postgres.Enable()`; Go runtime and process metrics.
 
-Middleware chain (fixed): error renderers → route capture → recovery → request id → client ip → tracing → metrics → logging → timeout (`HTTP_REQUEST_TIMEOUT`) → max bytes (`HTTP_MAX_BODY_BYTES`) → security headers → CORS (only `gox.WithCORS`) → cross-origin protection → feature middleware → auth (`gox.WithAuth`) → `gox.WithMiddleware` → mux.
+Middleware chain (fixed): error renderers → route capture → recovery → request id → client ip → tracing → metrics → logging → error mappers (`gox.WithErrorMapper`) → timeout (`HTTP_REQUEST_TIMEOUT`) → max bytes (`HTTP_MAX_BODY_BYTES`) → security headers → CORS (only `gox.WithCORS`) → cross-origin protection → feature middleware → auth (`gox.WithAuth`) → `gox.WithMiddleware` → mux.
 
 Forms (gox/web): `GET` renders the form; `POST` decodes with `web.Form[T]`, re-renders the same component with status 422 on `FieldErrors`, and on success calls `web.AddFlash` then `web.Redirect` (303, or `HX-Redirect` for htmx). `FieldErrors` is keyed by the `form` tag name; messages are `required`, `must be at least N characters`, `must be at most N characters`, `must be at least N`, `must be at most N`, `must be a whole number`, `must be a number`, `must be a duration such as 30s or 5m`. CSRF is automatic with sessions and applies to form submissions (`application/x-www-form-urlencoded`, `multipart/form-data`, or no Content-Type): include `@web.CSRFField(page)` (hidden field `_csrf`) in forms and `@web.CSRFMeta(page)` in the layout head (`X-CSRF-Token` header for htmx and fetch); a missing or wrong token is a 403. JSON requests (`Content-Type: application/json`) are never checked, so a JSON API and HTML pages coexist in one service and curl works; `web.WithCSRFExempt("/webhooks/")` skips prefixes that third parties call. Rejections by any middleware log the real route.
 
@@ -31,8 +31,13 @@ HTML errors (gox/web): `web.Enable` registers an error renderer, so `web.Error`,
 Never:
 - Never add a router (chi, gin, echo), an ORM, or a DI framework. `net/http` mux, pgx, explicit options.
 - Never call `http.Error` or write error JSON by hand; use `gox.Error` / `web.Error`.
+- Never put internals (SQL, hostnames, upstream error text) in an error's message or details: both reach the client. Keep them in the wrapped cause: `gox.WrapError(err, code, msg)` sends only msg, keeps err for `errors.Is`, and logs it on a 5xx.
 - Never read env vars directly; add fields to your config struct (`gox.WithConfig`).
+- Never leave a secret without `mask` in its `conf` tag: at debug level gox logs the effective configuration, and only masked fields are hidden.
+- Never put a comma in `help:` text: conf splits tag options on commas, so the help is silently cut short.
+- Never rely on a `.env` file: nothing in gox loads one. Export the variables; `.env.example` lists them.
 - Never start goroutines that outlive a request outside a component or `gox.Periodic`; they would not be stopped on shutdown.
+- Never stream a response (SSE, WebSockets, flushed chunks): the timeout middleware buffers each response until its handler returns, and a handler still running at `<PREFIX>_HTTP_REQUEST_TIMEOUT` gets a 504.
 - Never mutate the shared HTTP client; derive one per request (`web.APIFrom`, `httpclient.WithBearer`).
-- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need. The exceptions are the provider-neutral APIs: `pkg/storage` (`Bucket`, option types, upload tokens) and `pkg/mail` (`Message`, `Sender`, `SMTP`, `Restrict`, `Recorder`), which every storage or mail provider shares, and `pkg/i18n` (server-side translations).
+- Never import `github.com/guilhermebr/gox/pkg/...` from a service unless you are writing a feature package; the root re-exports what services need. The exceptions: `pkg/storage` (`Bucket`, option types, upload tokens) and `pkg/mail` (`Message`, `Sender`, `SMTP`, `Restrict`, `Recorder`), which every storage or mail provider shares; `pkg/i18n` (server-side translations); `pkg/middleware` (`Bearer` and `Principal`, for API keys and opaque tokens); `pkg/httpclient` (`WithRetry` for idempotent calls, `WithBearer` for a per-request client).
 - Never put datastore settings in `BaseConfig`; they are feature sections (`<PREFIX>_POSTGRES_URL`).

@@ -8,8 +8,8 @@ web/layout/*.templ            # layout(s) (HTML apps)
 web/components/*.templ        # shared components (HTML apps)
 migrations/migrations.go      # package migrations: //go:embed *.sql; var FS embed.FS
 migrations/NNNN_name.up.sql   # golang-migrate files (and .down.sql)
-static/static.go              # package static: //go:embed css js img; var FS embed.FS (HTML apps)
-.env.example                  # every <PREFIX>_* variable with its default
+static/static.go              # package static: //go:embed all:css all:js; var FS embed.FS (HTML apps)
+.env.example                  # the <PREFIX>_* variables to set; --help lists every one
 Makefile                      # build, test, lint, generate (templ), run
 ```
 

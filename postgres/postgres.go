@@ -147,7 +147,8 @@ func (c *component) Ready(ctx context.Context) error {
 }
 
 // Tx runs fn in a transaction: commit when fn returns nil, rollback
-// otherwise (and on panic). The returned error is fn's error wrapped.
+// otherwise (and on panic). It returns fn's error unchanged; a failed begin
+// or commit comes back wrapped.
 func Tx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (err error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {

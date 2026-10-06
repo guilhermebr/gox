@@ -76,7 +76,7 @@ func main() {
 }
 ```
 
-Server-rendered HTML app (templ), two imports plus templ. The form input struct lives in the views package so both `main` and the templ component can use it. Run `go get github.com/a-h/templ` in the service (the CLI version must match `gox/web`'s pin) and `templ generate` before building; set `<PREFIX>_WEB_SESSION_SECRET` (32+ bytes) in production:
+Server-rendered HTML app (templ), two imports plus templ. The form input struct lives in the views package so both `main` and the templ component can use it. `go mod tidy` adds `github.com/a-h/templ` at `gox/web`'s version; do not `go get` it on its own, which upgrades it past the version `make generate` runs. After every `.templ` edit, regenerate the `*_templ.go` files with `make generate` (in a `gox new -web` service it runs the templ CLI through `go run`, pinned to `gox/web`'s templ version); never install templ globally or edit `*_templ.go` by hand. Set `<PREFIX>_WEB_SESSION_SECRET` (32+ bytes) in production:
 
 ```go
 package main
@@ -89,14 +89,19 @@ import (
 	"github.com/guilhermebr/gox/web"
 
 	"example.com/shop/internal/guestbook/views" // templ components: views.Home, views.SignForm, views.SignInput
-	"example.com/shop/static"                   // package static: //go:embed css js; var FS embed.FS
-	"example.com/shop/web/layout"               // templ layout: layout.Layout
+	"example.com/shop/static"                   // package static: //go:embed all:css all:js; var FS embed.FS
+	"example.com/shop/web/layout"               // templ layout: layout.Layout, layout.ErrorPage
 )
 
 func main() {
 	a := gox.MustNew("shop",
 		gox.HTTP(),
-		web.Enable(web.WithStatic(static.FS), web.WithSessions(), web.WithLayout(layout.Layout)),
+		web.Enable(
+			web.WithStatic(static.FS),
+			web.WithSessions(),
+			web.WithLayout(layout.Layout),
+			web.WithErrorPage(layout.ErrorPage),
+		),
 	)
 	a.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		web.PageFrom(r).Title = "Home" // set Title before Render; the layout prints it
@@ -124,6 +129,8 @@ func main() {
 }
 ```
 
+In `.templ` files, `if`, `for` and `switch` end their line with `{` and the body goes on the lines below; a one-line block does not parse.
+
 A templ layout (`web/layout/layout.templ`) receives the page context and the body:
 
 ```templ
@@ -136,10 +143,19 @@ func Layout(page *web.Page, body templ.Component) templ.Component { return shell
 templ shell(page *web.Page, body templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en">
-		<head><meta charset="utf-8"/><title>{ page.Title }</title>@web.CSRFMeta(page)<link rel="stylesheet" href={ page.Asset("css/app.css") }/></head>
+		<head>
+			<meta charset="utf-8"/>
+			<title>{ page.Title }</title>
+			@web.CSRFMeta(page)
+			<link rel="stylesheet" href={ page.Asset("css/app.css") }/>
+		</head>
 		<body>
-			for _, f := range page.Flashes { <div class={ "flash", "flash-" + f.Kind }>{ f.Message }</div> }
-			<main>@body</main>
+			for _, f := range page.Flashes {
+				<div class={ "flash", "flash-" + f.Kind }>{ f.Message }</div>
+			}
+			<main>
+				@body
+			</main>
 		</body>
 	</html>
 }
@@ -160,13 +176,15 @@ templ SignForm(page *web.Page, in SignInput, errs web.FieldErrors) {
 	<form method="post" action="/sign">
 		@web.CSRFField(page)
 		<input name="name" value={ in.Name }/>
-		if msg, ok := errs["name"]; ok { <span class="field-error">{ msg }</span> }
+		if msg, ok := errs["name"]; ok {
+			<span class="field-error">{ msg }</span>
+		}
 		<button type="submit">Sign</button>
 	</form>
 }
 ```
 
-A custom error page (`web/layout/errors.templ`) is a body fragment; gox wraps it in the layout. Set the title in the Go wrapper, since the layout prints it before the body renders:
+A custom error page (`web/layout/errors.templ`, passed with `web.WithErrorPage`) is a body fragment; gox wraps it in the layout. Set the title in the Go wrapper, since the layout prints it before the body renders:
 
 ```templ
 package layout

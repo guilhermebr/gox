@@ -1,13 +1,14 @@
 // Package middleware provides the HTTP middleware every gox service runs and
-// the Chain that orders them. Every rejection a middleware produces renders
-// the same JSON envelope handlers use, so clients never see plain text from
-// one layer and JSON from another.
+// the Chain that orders them. Every rejection a middleware produces is
+// rendered like a handler's error (the JSON envelope, or the app's error
+// renderer when one accepts the request), so clients never see plain text
+// from one layer and JSON from another.
 //
-// Default chain (built by pkg/httpserver):
-//
-//	recovery → request id → tracing → metrics → logging → timeout →
-//	max bytes → security headers → CORS (if declared) → auth (if set) →
-//	user middleware → mux
+// gox.HTTP in the root package builds the default chain around these, in a
+// fixed order; go doc github.com/guilhermebr/gox.HTTP lists it. Services
+// reach most of them through the root (gox.RateLimit, gox.ClientIP,
+// gox.WithCORS) and import this package for Bearer and Principal, the
+// building blocks of API-key and opaque-token auth.
 package middleware
 
 import (

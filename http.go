@@ -42,9 +42,11 @@ type (
 // 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
 //
 // Chain: error renderers → route capture → recovery → request id → client ip → tracing → metrics →
-// logging → timeout → max bytes → security headers → CORS (WithCORS) →
-// cross-origin protection → feature middleware (Builder.Middleware) → auth (WithAuth) →
-// WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
+// logging → error mappers (WithErrorMapper) → timeout → max bytes → security headers →
+// CORS (WithCORS) → cross-origin protection → feature middleware (Builder.Middleware) →
+// auth (WithAuth) → WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
+// The timeout buffers each response until its handler returns, so nothing
+// streams: no SSE, WebSockets or flushed chunks.
 func HTTP(opts ...HTTPOption) Option {
 	return func(b *Builder) error {
 		if b.http != nil {
