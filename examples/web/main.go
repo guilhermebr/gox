@@ -1,12 +1,12 @@
-// Command web is the plan's server-rendered example: a layout, two pages,
-// a form with validation errors, static assets and a 404 page. Two
-// imports plus templ.
+// Command web is a server-rendered app on templ: a layout, two pages, a form
+// with validation errors, flash messages, static assets and an error page.
+// Two gox imports plus templ.
 //
 //	go run ./examples/web
 //	open http://localhost:8080/
 //
-// Set WEB_EXAMPLE_WEB_SESSION_SECRET (32+ bytes) outside development; in
-// development an ephemeral secret is generated and logged as a warning.
+// Set SHOP_WEB_SESSION_SECRET (32+ bytes) in production; elsewhere an
+// ephemeral secret is generated and a warning names the variable.
 package main
 
 import (
@@ -17,11 +17,13 @@ import (
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/web"
 
+	"github.com/guilhermebr/gox/examples/web/internal/guestbook/views"
 	"github.com/guilhermebr/gox/examples/web/static"
-	"github.com/guilhermebr/gox/examples/web/views"
+	"github.com/guilhermebr/gox/examples/web/web/layout"
 )
 
 // guestbook is the example's whole "domain": names people signed with.
+// Handlers run concurrently, so every access holds the lock.
 type guestbook struct {
 	mu    sync.Mutex
 	names []string
@@ -40,13 +42,13 @@ func (g *guestbook) all() []string {
 }
 
 func main() {
-	a := gox.MustNew("web-example",
+	a := gox.MustNew("shop",
 		gox.HTTP(),
 		web.Enable(
 			web.WithStatic(static.FS),
 			web.WithSessions(),
-			web.WithLayout(views.Layout),
-			web.WithErrorPage(views.ErrorPage),
+			web.WithLayout(layout.Layout),
+			web.WithErrorPage(layout.ErrorPage),
 		),
 	)
 	book := &guestbook{}
@@ -66,7 +68,7 @@ func main() {
 	a.HandleFunc("POST /sign", func(w http.ResponseWriter, r *http.Request) {
 		in, ferrs, err := web.Form[views.SignInput](r)
 		if err != nil {
-			web.Error(w, r, err)
+			gox.Error(w, r, err) // the error page for a browser, the JSON envelope otherwise
 			return
 		}
 		if ferrs != nil {

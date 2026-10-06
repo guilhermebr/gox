@@ -8,7 +8,8 @@ import "github.com/guilhermebr/gox/pkg/errors"
 // Code classifies a coded error.
 type Code = errors.Code
 
-// Codes.
+// Codes classify errors: compare with CodeOf(err) == CodeNotFound, never
+// by error text.
 const (
 	CodeOK                 = errors.CodeOK
 	CodeCanceled           = errors.CodeCanceled
@@ -40,7 +41,9 @@ func WrapError(cause error, code Code, msg string) *errors.Error {
 	return errors.Wrap(cause, code, msg)
 }
 
-// CodeOf returns the code of err through wrapping: OK for nil, Unknown for foreign errors.
+// CodeOf returns the code of err through wrapping: OK for nil,
+// DeadlineExceeded or Canceled for context errors, Unknown for other
+// errors that are not gox errors.
 func CodeOf(err error) Code { return errors.CodeOf(err) }
 
 // HTTPStatus returns the HTTP status err renders as.

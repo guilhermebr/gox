@@ -1,37 +1,29 @@
-// Command postgres is the plan's second canonical service: a JSON API
-// backed by Postgres with one migration. Two imports.
+// Command postgres is a JSON API backed by Postgres with one migration. Two
+// gox imports plus pgx.
 //
 // Readiness is green only after the pool pings and the migration has run,
-// pool stats and query spans reach the admin server, and shutdown closes
-// the pool last.
+// queries are traced once OTEL export is on, pool stats are exported on
+// :9090/metrics, and shutdown closes the pool last.
 //
-//	POSTGRES_EXAMPLE_POSTGRES_URL=postgres://u:p@localhost:5432/db go run ./examples/postgres
+//	BILLING_POSTGRES_URL=postgres://u:p@localhost:5432/db go run ./examples/postgres
 //	curl -i -X POST localhost:8080/invoices -d '{"id":"inv_1","customer":"ana","amount":1250}'
 //	curl -i localhost:8080/invoices/inv_1
 //	curl localhost:9090/readyz
 package main
 
 import (
-	"embed"
 	"errors"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/postgres"
+
+	"github.com/guilhermebr/gox/examples/postgres/migrations"
 )
-
-//go:embed migrations/*.sql
-var migrations embed.FS
-
-// Config adds the service's own settings next to the framework's.
-type Config struct {
-	gox.BaseConfig
-	InvoiceTTL time.Duration `conf:"default:24h"`
-}
 
 type invoice struct {
 	ID       string `json:"id"`
@@ -40,11 +32,9 @@ type invoice struct {
 }
 
 func main() {
-	var cfg Config
-	a := gox.MustNew("postgres-example",
-		gox.WithConfig(&cfg),
+	a := gox.MustNew("billing",
 		gox.HTTP(),
-		postgres.Enable(postgres.WithMigrations(migrations)),
+		postgres.Enable(postgres.WithMigrations(migrations.FS)),
 	)
 	db := postgres.From(a)
 
@@ -69,11 +59,20 @@ func main() {
 			gox.Error(w, r, err)
 			return
 		}
+		if inv.Amount <= 0 {
+			gox.Error(w, r, gox.InvalidArgument("amount must be positive").WithDetail("field", "amount"))
+			return
+		}
 		err := postgres.Tx(r.Context(), db, func(tx pgx.Tx) error {
 			_, err := tx.Exec(r.Context(),
 				"INSERT INTO invoices (id, customer, amount) VALUES ($1, $2, $3)", inv.ID, inv.Customer, inv.Amount)
 			return err
 		})
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+			gox.Error(w, r, gox.AlreadyExists("invoice %s", inv.ID))
+			return
+		}
 		if err != nil {
 			gox.Error(w, r, err)
 			return

@@ -79,10 +79,10 @@ func From(a *gox.App) client.Client {
 	return gox.MustValue[client.Client](a, clientKey{}, "temporal.From", "temporal.Enable()")
 }
 
-// Worker returns the worker for a task queue, creating it on first use.
-// Call it after New and before Run and register workflows and activities on
-// the result; the app starts and stops it. Unless opts says otherwise,
-// running activities get the app's shutdown timeout to finish.
+// Worker returns the worker for a task queue, created on first use: call it
+// after New and before Run, register workflows and activities on it, and the
+// app starts and stops it. Unless opts says otherwise, running activities get
+// the app's shutdown timeout to finish.
 func Worker(a *gox.App, taskQueue string, opts worker.Options) worker.Worker {
 	f := gox.MustValue[*feature](a, featureKey{}, "temporal.Worker", "temporal.Enable()")
 	f.mu.Lock()

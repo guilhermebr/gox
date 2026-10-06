@@ -1,8 +1,9 @@
 # gox is a multi-module repository: the root module plus one module per
-# feature package and one for examples. Every target below iterates over all
-# of them so `make ci` is the single command CI and contributors run.
+# feature, provider and utility, and one for examples (go.work lists them).
+# Every target below iterates over all of them so `make ci` is the single
+# command CI and contributors run.
 
-MODULES := $(shell find . -name go.mod -not -path './.git/*' -exec dirname {} \; | sort)
+MODULES := $(shell find . -name go.mod -not -path './.git/*' -not -path './.claude/*' -exec dirname {} \; | sort)
 LINT_CONFIG := $(CURDIR)/.golangci.yml
 GOLANGCI_LINT ?= golangci-lint
 
@@ -10,7 +11,7 @@ define foreach_module
 	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && $(1)) || exit 1; done
 endef
 
-.PHONY: all build test test-integration lint fmt fmt-check vet tidy vulncheck check-deps check-lint-rules generate generate-check llm llm-check check-recipes ci help
+.PHONY: all build test test-integration lint fmt fmt-check vet tidy vulncheck check-deps check-lint-rules generate generate-check llm llm-check check-recipes check-agent-docs ci help
 
 TEMPL_VERSION := $(shell grep -E 'github.com/a-h/templ ' web/go.mod | awk '{print $$2}')
 TEMPL := go run github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION)
@@ -25,7 +26,7 @@ build:
 test:
 	$(call foreach_module,go test ./... -race -count=1)
 
-## test-integration: run tests tagged `integration` (needs DATABASE_URL: a throwaway database the tests own)
+## test-integration: run tests tagged `integration`; each skips without its server (DATABASE_URL a throwaway database the tests own; S3_TEST_*; TEMPORAL_ADDRESS)
 test-integration:
 	$(call foreach_module,go test ./... -race -count=1 -tags integration)
 
@@ -60,7 +61,7 @@ generate:
 
 ## generate-check: fail if generated templ code is stale
 generate-check: generate
-	@git diff --exit-code -- '*_templ.go' || (echo "generated templ code is stale: run make generate" && exit 1)
+	@git diff --exit-code -- '*_templ.go' || (echo "generated templ code differs from the git index: run make generate, then git add the *_templ.go files" && exit 1)
 
 ## llm: regenerate llm.txt from source (docs/llm fragments + go/doc)
 llm:
@@ -74,6 +75,10 @@ llm-check:
 check-recipes:
 	@scripts/check-recipes.sh
 
+## check-agent-docs: AGENTS.md and skills stay within budget and load only where meant, and every path and index entry they name exists
+check-agent-docs:
+	@scripts/check-agent-docs.sh
+
 ## check-deps: prove the import-as-opt-in rule on the example binaries
 check-deps:
 	@scripts/check-deps.sh examples/minimal absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/aws/aws-sdk-go-v2 github.com/mailgun/mailgun-go/v5 github.com/stripe/stripe-go/v82 github.com/posthog/posthog-go github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5 github.com/a-h/templ
@@ -83,12 +88,12 @@ check-deps:
 	@scripts/check-deps.sh examples/web present github.com/a-h/templ
 	@scripts/check-deps.sh examples/web absent github.com/jackc/pgx/v5 github.com/supabase-community/supabase-go github.com/workos/workos-go/v10 go.temporal.io/sdk github.com/aws/aws-sdk-go-v2 github.com/mailgun/mailgun-go/v5 github.com/stripe/stripe-go/v82 github.com/posthog/posthog-go github.com/pb33f/libopenapi github.com/riverqueue/river github.com/golang-jwt/jwt/v5
 
-## check-lint-rules: prove the depguard dependency rules fire on a planted violation
+## check-lint-rules: prove each depguard dependency rule fires on a planted violation
 check-lint-rules:
 	@scripts/check-lint-rules.sh
 
 ## ci: the full check suite
-ci: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules
+ci: fmt-check vet lint test generate-check llm-check check-recipes check-agent-docs check-deps check-lint-rules
 
 ## help: list targets
 help:

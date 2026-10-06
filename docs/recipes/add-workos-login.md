@@ -16,8 +16,9 @@ func main() {
 	// (https://shop.example/auth/callback) and SHOP_WORKOS_COOKIE_PASSWORD
 	// (32+ bytes). WithSessions authenticates every request from the sealed
 	// session cookie or a bearer access token, refreshes an expired access
-	// token once, and rotates the cookie.
-	a := gox.MustNew("shop", gox.HTTP(), workos.Enable(workos.WithSessions()))
+	// token once, and rotates the cookie. gox.HTTPClient() gives the SDK the
+	// app's outbound client: timeouts, tracing, request-id propagation.
+	a := gox.MustNew("shop", gox.HTTP(), gox.HTTPClient(), workos.Enable(workos.WithSessions()))
 
 	a.HandleFunc("GET /auth/login", workos.Login(a))       // ?return_to=/invoices (local paths only)
 	a.HandleFunc("GET /auth/callback", workos.Callback(a)) // the redirect URI
@@ -76,12 +77,6 @@ client id), a `BASE_URL` that is a proxy rather than an emulator, or an
 environment that still issues `https://api.workos.com/` (the pre-v0.1.1
 default). A rejected session is logged at warn with the SDK's reason and both
 `issuer` and `token_issuer`; `invalid_jwt` with different values means
-`SHOP_WORKOS_ISSUER` should be `token_issuer`. The SDK refuses valid tokens the
-same way when it has no signing key for them: it drops its cached keys five
-minutes after the last successful fetch and, after a failed fetch (an outage, a network
-blip), refuses every token for 30 seconds. The provider then fetches the key
-set itself and repeats the SDK's checks; a token that passes them keeps its
-session cookie (warning `workos keys unreachable; session kept` or `workos
-keys missing in the SDK; session kept` once per fetch), so users are not
-signed out: requests are anonymous meanwhile and sessions resume, with a
-normal refresh, once the SDK has the keys again.
+`SHOP_WORKOS_ISSUER` should be `token_issuer`. While WorkOS's signing keys are
+unreachable, requests are anonymous but session cookies are kept (warning
+`workos keys ... session kept`), so users are not signed out.

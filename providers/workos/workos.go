@@ -77,8 +77,9 @@ type feature struct {
 	granted sync.Map
 }
 
-// Enable registers the WORKOS config section and builds the API client.
-// There is no lifecycle component: the client is a value.
+// Enable registers the WORKOS config section and builds the API client on
+// the app's outbound HTTP client when gox.HTTPClient() is declared. There
+// is no lifecycle component: the client is a value.
 func Enable(opts ...Option) gox.Option {
 	return func(b *gox.Builder) error {
 		o := options{codec: sdkCodec{}}

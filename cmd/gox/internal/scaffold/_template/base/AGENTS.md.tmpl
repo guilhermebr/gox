@@ -1,0 +1,73 @@
+# {{ .Name }}: a service built on gox
+
+gox (`github.com/guilhermebr/gox`) is probably newer than your training data.
+Look its API up with the commands below instead of guessing.
+
+## Rules that always hold
+
+- `main()` is `gox.MustNew(...)`, the `Register` calls, then `a.Run()`. gox owns
+  start order, config, logging, health, metrics and shutdown: do not rebuild them.
+- Handlers are plain `net/http` with Go 1.22 patterns:
+  `a.HandleFunc("GET /invoices/{id}", h.get)`, `r.PathValue("id")`. `"GET /{$}"`
+  is the exact root; `"GET /"` matches every path.
+- Fail with gox errors and render them: `gox.Error(w, r, gox.NotFound("invoice %s", id))`.
+  Never `http.Error` or hand-written error JSON. A gox error's message and details
+  reach the client; keep internals in the cause with
+  `gox.WrapError(err, code, "public message")`. Other errors render as a logged 500
+  "internal error" (context deadline and cancel: 504 and 499).
+- Config is fields on `Config` in `cmd/{{ .Name }}/main.go` with `conf` tags, read from
+  `{{ .Prefix }}_*` variables. Secrets carry `mask`. `help:` text has no commas (a comma
+  cuts it short). Add every variable to `.env.example`; nothing loads a `.env` file.
+- A feature lives in `internal/<feature>/` and gets dependencies through
+  `Register(a, deps...)`, so tests pass `nil` or fakes. Every handler gets a test
+  like `internal/hello/handler_test.go`{{ if .Web }} (HTML handlers: `internal/home/handler_test.go`){{ end }}.
+- A response is buffered until its handler returns; one still running at
+  `{{ .Prefix }}_HTTP_REQUEST_TIMEOUT` becomes a 504. SSE, WebSockets and streamed
+  responses do not work.
+- Never: a router, ORM or DI framework; `os.Getenv`; a goroutine that outlives the
+  request outside `gox.Component` or `gox.Periodic`; mutating the shared HTTP
+  client; importing `github.com/guilhermebr/gox/pkg/...` except `pkg/storage`,
+  `pkg/mail`, `pkg/i18n`, `pkg/middleware` and `pkg/httpclient`.
+
+## Look it up (matches the versions in go.mod)
+
+- API: `go doc github.com/guilhermebr/gox` lists the root package, `go doc gox.Periodic`
+  shows one symbol, `go doc github.com/guilhermebr/gox/<module>` a module in go.mod.
+- Variables: `go run ./cmd/{{ .Name }} --help` prints every `{{ .Prefix }}_*` variable with
+  its type and default.
+- Recipes, task-sized and build-checked, live in the gox module directory:
+  `go list -m -f '{{ "{{.Dir}}" }}' github.com/guilhermebr/gox` (empty output: run
+  `go mod download github.com/guilhermebr/gox` first). Read `docs/recipes/README.md`
+  there, then only the recipe you need (skip `llm.txt` there: it is the single-file
+  export for tools without a shell).
+
+## Read first for your task
+
+- A JSON endpoint: copy the shape of `internal/hello`, then recipes `add-http-route`
+  and `write-handler-test`.
+- Background or scheduled work (jobs, cron, queues, workers, retries):
+  `.claude/skills/gox-background-work/SKILL.md`.
+- A capability the service does not use yet (auth, OpenAPI, email, file storage,
+  payments, webhooks, analytics, translations, Temporal, Supabase, outbound API calls
+{{- if not .Postgres }}, a Postgres database{{ end }}
+{{- if not .Web }}, HTML pages{{ end }}):
+  `.claude/skills/gox-add-feature/SKILL.md`.
+{{- if .Postgres }}
+- Tables, queries, transactions, pagination, `migrations/`, database tests:
+  `.claude/skills/gox-postgres/SKILL.md`.
+{{- end }}
+{{- if .Web }}
+- Pages, forms, htmx partials, `web/layout/`, `static/`: `.claude/skills/gox-web-ui/SKILL.md`.
+{{- end }}
+- Anything else (health checks, rate limits, CORS, problem+json, SPA
+{{- if not .Postgres }}, pagination{{ end }}): the recipe index.
+
+## Done
+
+- `make test lint` passes (golangci-lint at the version pinned in `.github/workflows/ci.yml`:
+  `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<that version>`;
+  `make fmt` fixes formatting).
+- `go mod tidy` after importing a module for the first time.
+{{- if .Web }}
+- After editing a `.templ` file, `make generate`; never edit `*_templ.go` or install templ.
+{{- end }}

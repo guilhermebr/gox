@@ -1,0 +1,86 @@
+---
+name: gox-web-ui
+description: Build or change server-rendered HTML in this gox service - templ pages and components, the layout, forms with validation and flash messages, htmx partials and redirects, static CSS and JS, error pages, and calling the service's own API from a page. Use it whenever a task touches a .templ file, internal/*/views, web/layout or static/, or asks for a page, screen, form, button, table or UI, even if templ or htmx is not mentioned. Not for JSON endpoints (AGENTS.md) or for adding a module (gox-add-feature).
+---
+
+# HTML pages in {{ .Name }}
+
+Pages are templ components rendered by plain `net/http` handlers inside the layout.
+`internal/home` is the working example: `views/home.templ` (the component),
+`handler.go` (`Register` and the handler), `handler_test.go` (its test).
+`web/layout/layout.templ` is the shell (title, CSRF meta tag, flashes, htmx and
+Alpine.js); `static/` holds the embedded assets. Recipes: `add-html-page`, `add-form-with-validation`, `add-htmx-partial`,
+`call-backend-api`, `translate-server-strings` (`docs/recipes/` in the gox module
+directory).
+
+## Add a page
+
+1. Write the component in `internal/<feature>/views/<page>.templ`. It takes typed
+   parameters and never reads the request.
+2. Run `make generate`. It writes `<page>_templ.go` with the templ version pinned in
+   the Makefile; until then the package does not compile (`undefined: views.<Page>`).
+   Commit the generated files: CI does not generate them.
+3. In the handler set `web.PageFrom(r).Title` first, then
+   `_ = web.Render(w, r, views.<Page>(...))`. The layout prints the title before the
+   body renders, so a title set later is lost.
+4. Mount the route in the feature's `Register(a, deps...)` and call that from main.
+5. Test it (below), then `make test lint`.
+
+Pick the writer:
+
+- `web.Render`: the page inside the layout; for an htmx request that is not an
+  `hx-boost` navigation it sends the component alone.
+- `web.RenderStatus`: the same with a status (422 for a form with errors).
+- `web.Partial`: the component alone, always (htmx fragments).
+- `gox.Error` (`web.Error` is the same function): failures. Browsers get the error
+  page, API clients the JSON envelope, with the same status.
+
+## Forms
+
+`GET` renders the form. `POST` decodes with `web.Form[T]`; on `FieldErrors` it
+re-renders with `web.RenderStatus` and 422, else `web.AddFlash` and `web.Redirect`
+(303, or `HX-Redirect` for htmx). Code: recipe `add-form-with-validation`.
+
+- Every `<form method="post">` contains `@web.CSRFField(page)`, so the component
+  takes `page *web.Page`. A form post without the token is a 403. htmx requests
+  send the token from `@web.CSRFMeta(page)` and the script in the layout: keep both.
+- `web.FieldErrors` is keyed by the `form` tag name (`errs["email"]`).
+  `go doc github.com/guilhermebr/gox/web.Form` lists the tags and the messages.
+- JSON requests are never CSRF-checked.
+
+## htmx, Alpine.js and static files
+
+- Run `make assets` once: it vendors the pinned htmx and Alpine.js into
+  `static/js`, which the layout loads. Until then `hx-*` and `x-*` attributes do
+  nothing.
+- Link assets with `page.Asset("css/app.css")`: production URLs carry a content hash.
+- `static/static.go` embeds `css` and `js` only: add a new directory (`img`) to its
+  `go:embed` line or it is not served.
+- An htmx endpoint answers with `web.Partial`; a redirect after an htmx post is
+  `web.Redirect`, which htmx follows.
+
+## templ gotchas
+
+- Never put a `for` or `if` block on one line: `for _, x := range xs { <li>{ x }</li> }`
+  fails to parse. Open the brace, put the children on their own lines, close it on
+  its own line.
+- Text that starts with a keyword (`for`, `if`) inside an element is read as a
+  statement: write it as `{ "for" }`.
+- Pages take what they show as parameters. `web.PageFrom(r).Data` is for the layout only.
+
+## Signed-in users and the API
+
+- `web.RequireSession(handler)` sends anonymous visitors to `/login`.
+- `web.WithSessionUser` resolves `page.User` once per request.
+- `web.APIFrom(r)` calls this service's JSON API as the signed-in user; it needs
+  `web.WithBackend()` and `gox.HTTPClient()`. Recipe `call-backend-api`.
+
+## Test
+
+- Components: `views.Home("hi").Render(ctx, &buf)` and assert on the HTML. No app needed.
+- Handlers: copy `internal/home/handler_test.go`, which runs the app through its
+  middleware on a free port. On a bare `a.Mux()`, `web.Render`, `web.PageFrom` and
+  `web.AddFlash` panic.
+- `web.Enable()` without `web.WithSessions()` has no CSRF check, so a test can post
+  a form directly. Use a client whose `CheckRedirect` returns
+  `http.ErrUseLastResponse` to see the 303.

@@ -1,7 +1,7 @@
-// Package httpx holds the three helpers every handler uses (JSON, Error,
-// Decode) and the envelope writer the middleware chain shares with them, so
-// a client sees one error shape whether a handler or the framework produced
-// it.
+// Package httpx holds the request and response helpers the root package
+// re-exports (JSON, Error, Decode, ParsePage, EncodeCursor, ProblemJSON) and
+// the error writer the middleware chain shares with them, so a client sees
+// one error shape whether a handler or the framework produced it.
 package httpx
 
 import (
@@ -61,11 +61,12 @@ func WriteEnvelope(w http.ResponseWriter, status int, env errors.Envelope) {
 	_ = json.NewEncoder(w).Encode(env)
 }
 
-// Error renders err as the standard envelope. It applies the error mappers
-// stored in the request context (the app installs its WithErrorMapper
-// functions there), stamps the request id, and logs server-side failures
-// with their cause. Client errors are not logged: they are the API working
-// as designed.
+// Error renders err through WriteError: the context's ErrorRenderer when
+// one accepts the request, otherwise the JSON envelope. It applies the
+// error mappers stored in the request context (the app installs its
+// WithErrorMapper functions there), stamps the request id, and logs
+// server-side failures with their cause. Client errors are not logged: they
+// are the API working as designed.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
 	ctx := r.Context()
 	err = errors.Map(err, Mappers(ctx)...)

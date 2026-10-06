@@ -19,7 +19,9 @@ type principalKey struct{}
 // client, so callers cannot probe why a token was refused.
 //
 // It is the building block for API keys, opaque session tokens and JWTs
-// (jwt.Auth is Bearer with a JWT validator).
+// (jwt.Auth is Bearer with a JWT validator). It exempts no path: passed to
+// gox.WithAuth it also answers 401 on /healthz and /readyz, so wrap only the
+// handlers that need it, or let those two paths through first.
 func Bearer(validate func(ctx context.Context, token string) (principal any, err error)) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

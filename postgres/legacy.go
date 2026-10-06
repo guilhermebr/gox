@@ -26,8 +26,7 @@ type legacyConfig struct {
 // _POOL_MIN_SIZE, _POOL_MAX_SIZE). It does not dial.
 //
 // Deprecated: pass postgres.Enable() to gox.New and read the pool with
-// postgres.From. New is removed one minor version after the root package
-// reaches v1.
+// postgres.From.
 func New(ctx context.Context, prefix string) (*pgxpool.Pool, error) {
 	var lc legacyConfig
 	if _, err := conf.Parse(prefix, &lc); err != nil {

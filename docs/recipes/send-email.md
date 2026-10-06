@@ -6,6 +6,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/pkg/mail"
@@ -16,15 +17,18 @@ import (
 type Config struct {
 	gox.BaseConfig
 	SMTPAddr         string   `conf:"help:host:port of a mail catcher such as localhost:1025; when set mail goes there instead of Mailgun"`
-	MailAllowDomains []string `conf:"help:when set only recipients at these domains get mail; set it on staging"`
+	MailAllowDomains []string `conf:"help:when set only recipients at these semicolon-separated domains get mail; set it on staging"`
 }
 
 func main() {
 	// SHOP_MAILGUN_API_KEY, SHOP_MAILGUN_DOMAIN; EU accounts also
 	// SHOP_MAILGUN_BASE_URL=https://api.eu.mailgun.net. Webhooks need
-	// SHOP_MAILGUN_WEBHOOK_SIGNING_KEY.
+	// SHOP_MAILGUN_WEBHOOK_SIGNING_KEY. The key and domain are required even
+	// with SHOP_SMTP_ADDR set: any value works in development, since nothing
+	// calls Mailgun at startup. Staging:
+	// SHOP_MAIL_ALLOW_DOMAINS=example.com;shop.example.
 	var cfg Config
-	a := gox.MustNew("shop", gox.WithConfig(&cfg), gox.HTTP(), mailgun.Enable())
+	a := gox.MustNew("shop", gox.WithConfig(&cfg), gox.HTTP(), gox.HTTPClient(), mailgun.Enable())
 
 	// Handlers depend on mail.Sender, never on a provider.
 	var sender mail.Sender = mailgun.Sender(a)
@@ -45,7 +49,9 @@ func main() {
 			gox.Error(w, r, gox.WrapError(err, gox.CodeUnavailable, "the receipt could not be sent"))
 			return
 		}
-		_ = gox.JSON(w, http.StatusAccepted, map[string]string{"message_id": id}) // store it to match delivery events
+		// Store the id to match delivery events. Mailgun returns it in angle
+		// brackets; Event.MessageID has none.
+		_ = gox.JSON(w, http.StatusAccepted, map[string]string{"message_id": strings.Trim(id, "<>")})
 	})
 
 	// Delivery events: delivered, failed (temporary or permanent), complained.
@@ -55,11 +61,14 @@ func main() {
 			gox.Error(w, r, err)
 			return
 		}
+		// The signature is checked, its age is not: a captured request
+		// replays, so handle each ev.ID once.
 		a.Log().InfoContext(r.Context(), "mail event", "type", ev.Type, "severity", ev.Severity, "recipient", ev.Recipient, "message_id", ev.MessageID)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	// Inbound mail: a Mailgun route forwarding to this URL.
+	// Inbound mail: a Mailgun route forwarding to this URL. It is a form post:
+	// with gox/web sessions on, pass web.WithCSRFExempt("/webhooks/").
 	a.HandleFunc("POST /webhooks/mailgun/inbound", func(w http.ResponseWriter, r *http.Request) {
 		in, err := mailgun.ParseInbound(a, r)
 		if err != nil {

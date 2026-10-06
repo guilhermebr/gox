@@ -1,11 +1,13 @@
 # golangci-lint v2 configuration shared by every module in this repository.
-# Run from a module directory: golangci-lint run --config ../.golangci.yml ./...
-# (the Makefile does this for you).
+# Run from a module directory with --config pointing here (the Makefile
+# passes the absolute path for you).
 #
-# depguard enforces the dependency direction (docs/decisions/0001-root-vs-feature-split.md):
+# depguard enforces the dependency direction (docs/decisions/0001-root-vs-feature-split.md,
+# 0008-providers-and-workos-sessions.md); scripts/check-lint-rules.sh proves it fires:
 #   root gox            -> pkg/*, stdlib, ardanlabs/conf, OpenTelemetry only
-#   pkg/*               -> other pkg/*, stdlib, third-party; never root or features
-#   feature packages    -> root, pkg/*, their own deps; never other features or shims
+#   pkg/*               -> other pkg/*, stdlib, third-party; never root, features or providers
+#   feature packages    -> root, pkg/*, their own deps; never other features or providers
+#   providers/<name>    -> root, pkg/*, their own SDK; never features or other providers
 #   monetary, osrelease -> stdlib only
 version: "2"
 
@@ -54,7 +56,8 @@ linters:
       rules:
         # Root package: only files at the repository root belong to it. Every
         # known subdirectory is excluded; a new top-level directory must be
-        # added here so it is classified deliberately.
+        # added here so it is classified deliberately
+        # (.claude/skills/gox-add-module/SKILL.md lists every edit).
         root:
           list-mode: strict
           files:
@@ -66,8 +69,6 @@ linters:
             - "!**/jwt/**"
             - "!**/openapi/**"
             - "!**/web/**"
-            - "!**/http/**"
-            - "!**/logger/**"
             - "!**/monetary/**"
             - "!**/osrelease/**"
             - "!**/examples/**"
@@ -87,8 +88,8 @@ linters:
               desc: pkg/* never imports the root package
             - pkg: github.com/guilhermebr/gox/postgres
               desc: pkg/* never imports a feature package
-            - pkg: github.com/guilhermebr/gox/providers/supabase
-              desc: pkg/* never imports a feature package
+            - pkg: github.com/guilhermebr/gox/providers
+              desc: pkg/* never imports a provider
             - pkg: github.com/guilhermebr/gox/jobs
               desc: pkg/* never imports a feature package
             - pkg: github.com/guilhermebr/gox/jwt
@@ -106,8 +107,8 @@ linters:
           files:
             - "**/postgres/**"
           deny:
-            - pkg: github.com/guilhermebr/gox/providers/supabase
-              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/providers
+              desc: feature packages never import a provider
             - pkg: github.com/guilhermebr/gox/jobs
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/jwt
@@ -116,21 +117,34 @@ linters:
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/web
               desc: feature packages do not import each other
+        # A provider never imports a feature package, test files included.
         providers:
           list-mode: lax
           files:
             - "**/providers/**"
           deny:
             - pkg: github.com/guilhermebr/gox/postgres
-              desc: feature packages do not import each other
+              desc: a provider never imports a feature package
             - pkg: github.com/guilhermebr/gox/jobs
-              desc: feature packages do not import each other
+              desc: a provider never imports a feature package
             - pkg: github.com/guilhermebr/gox/jwt
-              desc: feature packages do not import each other
+              desc: a provider never imports a feature package
             - pkg: github.com/guilhermebr/gox/openapi
-              desc: feature packages do not import each other
+              desc: a provider never imports a feature package
             - pkg: github.com/guilhermebr/gox/web
-              desc: feature packages do not import each other
+              desc: a provider never imports a feature package
+        # A provider never imports another provider. Test files are skipped:
+        # a provider's external tests (package <name>_test) import the
+        # provider itself. The prefix also matches a provider's own
+        # subpackages, so each provider stays one package.
+        provider-siblings:
+          list-mode: lax
+          files:
+            - "**/providers/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/guilhermebr/gox/providers
+              desc: a provider never imports another provider
         feature-openapi:
           list-mode: lax
           files:
@@ -144,8 +158,8 @@ linters:
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/web
               desc: feature packages do not import each other
-            - pkg: github.com/guilhermebr/gox/providers/supabase
-              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/providers
+              desc: feature packages never import a provider
         feature-jobs:
           list-mode: lax
           files:
@@ -159,6 +173,8 @@ linters:
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/web
               desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/providers
+              desc: feature packages never import a provider
         feature-jwt:
           list-mode: lax
           files:
@@ -170,8 +186,8 @@ linters:
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/postgres
               desc: feature packages do not import each other
-            - pkg: github.com/guilhermebr/gox/providers/supabase
-              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/providers
+              desc: feature packages never import a provider
             - pkg: github.com/guilhermebr/gox/web
               desc: feature packages do not import each other
         feature-web:
@@ -181,8 +197,8 @@ linters:
           deny:
             - pkg: github.com/guilhermebr/gox/postgres
               desc: feature packages do not import each other
-            - pkg: github.com/guilhermebr/gox/providers/supabase
-              desc: feature packages do not import each other
+            - pkg: github.com/guilhermebr/gox/providers
+              desc: feature packages never import a provider
             - pkg: github.com/guilhermebr/gox/jobs
               desc: feature packages do not import each other
             - pkg: github.com/guilhermebr/gox/jwt

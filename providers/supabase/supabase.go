@@ -11,8 +11,7 @@ import (
 // New creates a client from <PREFIX>_SUPABASE_URL and <PREFIX>_SUPABASE_KEY.
 //
 // Deprecated: pass supabase.Enable() to gox.New and read the client with
-// supabase.From. New is removed one minor version after the root package
-// reaches v1.
+// supabase.From.
 func New(prefix string) (*supabase.Client, error) {
 	var lc struct {
 		URL string `conf:"env:SUPABASE_URL,required"`

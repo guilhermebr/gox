@@ -19,7 +19,7 @@ type Config struct {
 	CookieMaxAge   time.Duration `conf:"default:720h"`
 	SecureCookies  string        `conf:"default:auto,help:auto | true | false; auto is on in production or behind X-Forwarded-Proto https"`
 	BaseURL        string        `conf:"help:API base URL; leave empty for api.workos.com (set it for an emulator)"`
-	Issuer         string        `conf:"help:trusted access-token issuer; empty is <BASE_URL or https://api.workos.com>/user_management/<CLIENT_ID>; set it to the tokens' iss for a custom auth domain or a non-default application or https://api.workos.com/ for the old default"`
+	Issuer         string        `conf:"help:trusted access-token issuer; empty is <BASE_URL or https://api.workos.com>/user_management/<CLIENT_ID>; set it to the tokens' iss for a custom auth domain or a non-default application or https://api.workos.com/ for the default before v0.1.1"`
 	WebhookSecret  string        `conf:"mask,help:signing secret of the webhook endpoint; required by workos.VerifyWebhook"`
 }
 

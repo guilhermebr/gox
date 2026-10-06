@@ -107,13 +107,18 @@ func newService(args []string) int {
 
 // spec lists what llm.txt documents, in order. Adding a feature package
 // means adding a line here. The root's API comes from the root package and
-// its env vars from pkg/config.Base, hence two entries.
+// its env vars from pkg/config.Base, hence two entries. llm.txt is for
+// building a service, so the root leaves out the API feature packages use
+// inside Enable, and pkg/middleware and pkg/httpclient show only what
+// docs/llm/80-conventions.md lets a service import.
 func spec(root string) llmdoc.Spec {
 	return llmdoc.Spec{
 		Fragments: filepath.Join(root, "docs", "llm"),
 		Packages: []llmdoc.Package{
-			{Title: "gox (root)", ImportPath: "github.com/guilhermebr/gox", Dir: root},
+			{Title: "gox (root)", ImportPath: "github.com/guilhermebr/gox", Dir: root, Exclude: []string{"Builder.*", "MustValue", "Value", "App.Value", "App.ConfigPrefix", "App.HasHTTPClient"}},
 			{Title: "gox (root)", ImportPath: "github.com/guilhermebr/gox", Dir: filepath.Join(root, "pkg", "config"), Config: "Base", ConfigOnly: true},
+			{Title: "middleware (Bearer and Principal for API keys and opaque tokens)", ImportPath: "github.com/guilhermebr/gox/pkg/middleware", Dir: filepath.Join(root, "pkg", "middleware"), Only: []string{"Bearer", "Principal"}},
+			{Title: "httpclient (retries and per-request bearer clients)", ImportPath: "github.com/guilhermebr/gox/pkg/httpclient", Dir: filepath.Join(root, "pkg", "httpclient"), Only: []string{"New", "Config", "WithRetry", "WithBearer", "WithUserAgent"}},
 			{Title: "postgres", ImportPath: "github.com/guilhermebr/gox/postgres", Dir: filepath.Join(root, "postgres"), Config: "Config", Section: "POSTGRES", DeclaredBy: "postgres.Enable()"},
 			{Title: "jobs", ImportPath: "github.com/guilhermebr/gox/jobs", Dir: filepath.Join(root, "jobs"), Config: "Config", Section: "JOBS", DeclaredBy: "jobs.Enable()"},
 			{Title: "jwt", ImportPath: "github.com/guilhermebr/gox/jwt", Dir: filepath.Join(root, "jwt"), Config: "Config", Section: "JWT", DeclaredBy: "jwt.Enable()"},

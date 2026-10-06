@@ -48,11 +48,13 @@ import (
 var catalog = []string{"apple", "apricot", "banana"}
 
 func main() {
+	// web.Enable() alone uses the default layout, which loads no htmx: keep the
+	// web.Enable options of add-html-page.md (what gox new -web generates).
 	a := gox.MustNew("shop", gox.HTTP(), web.Enable())
 
 	a.HandleFunc("GET /search", func(w http.ResponseWriter, r *http.Request) {
 		web.PageFrom(r).Title = "Search"
-		_ = web.Render(w, r, views.Search()) // layout applied; for an htmx request Render skips it automatically
+		_ = web.Render(w, r, views.Search()) // in the layout; alone for an htmx fragment request (not hx-boost)
 	})
 
 	a.HandleFunc("GET /search/results", func(w http.ResponseWriter, r *http.Request) {
@@ -72,4 +74,6 @@ func main() {
 }
 ```
 
-The layout loads `static/js/htmx.min.js` (vendored by the scaffold) and sends the CSRF token on every request with `document.body.addEventListener('htmx:configRequest', e => { e.detail.headers['X-CSRF-Token'] = document.querySelector('meta[name=csrf-token]').content })`.
+htmx comes from the scaffold's layout (`web/layout/layout.templ`, shown in
+add-html-page.md): it loads `static/js/htmx.min.js`, which `make assets`
+vendors once, and sends the CSRF token as `X-CSRF-Token` on every htmx request.

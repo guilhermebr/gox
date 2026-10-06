@@ -14,6 +14,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/guilhermebr/gox"
 )
@@ -24,15 +25,34 @@ type invoice struct {
 	Amount   int    `json:"amount"`
 }
 
-var invoices = map[string]invoice{
-	"inv_1": {ID: "inv_1", Customer: "ana", Amount: 1250},
+// store is the example's in-memory database. Handlers run concurrently, so
+// every access holds the lock.
+type store struct {
+	mu       sync.Mutex
+	invoices map[string]invoice
+}
+
+func (s *store) get(id string) (invoice, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inv, ok := s.invoices[id]
+	return inv, ok
+}
+
+func (s *store) put(inv invoice) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.invoices[inv.ID] = inv
 }
 
 func main() {
-	a := gox.MustNew("http-example", gox.HTTP())
+	a := gox.MustNew("billing", gox.HTTP())
+	db := &store{invoices: map[string]invoice{
+		"inv_1": {ID: "inv_1", Customer: "ana", Amount: 1250},
+	}}
 
 	a.HandleFunc("GET /invoices/{id}", func(w http.ResponseWriter, r *http.Request) {
-		inv, ok := invoices[r.PathValue("id")]
+		inv, ok := db.get(r.PathValue("id"))
 		if !ok {
 			gox.Error(w, r, gox.NotFound("invoice %s", r.PathValue("id")))
 			return
@@ -51,7 +71,7 @@ func main() {
 			return
 		}
 		in.ID = "inv_" + in.Customer
-		invoices[in.ID] = in
+		db.put(in)
 		_ = gox.JSON(w, http.StatusCreated, in)
 	})
 

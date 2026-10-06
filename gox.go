@@ -65,8 +65,13 @@ func MustNew(name string, opts ...Option) *App {
 // LoadConfig loads dst (which must embed BaseConfig) from the environment
 // under the service's default prefix, without building an App. Use it when
 // a value in the config decides which options to pass to New, such as a
-// ROLE that selects components. New loads the same struct again; that is
-// cheap and keeps one source of truth.
+// ROLE that selects components or a Periodic interval. New loads the same
+// struct again; that is cheap and keeps one source of truth.
+//
+// LoadConfig ignores WithConfigPrefix and WithEnvAlias, and it also fails
+// for --help and --version. Never exit on its error: keep a value that is
+// valid without the config (an interval above zero) and let MustNew, which
+// loads the same struct, print the help or the error.
 func LoadConfig(name string, dst any) error {
 	if _, ok := config.BaseOf(dst); !ok {
 		return fmt.Errorf("gox: LoadConfig: %T must embed gox.BaseConfig", dst)
@@ -78,8 +83,12 @@ func LoadConfig(name string, dst any) error {
 
 // ---- Feature options provided by the root ----
 
-// Component adds any user component at StageUser. It is the escape hatch
-// for things gox has no option for.
+// Component adds c at StageUser: anything with Name() string, Start(ctx)
+// error that returns quickly, and Stop(ctx) error; a Run(ctx) error method
+// makes it long-running (run after Start, its context cancelled on
+// shutdown, a non-nil error stops the service), Ready(ctx) error joins
+// /readyz and Healthy(ctx) error joins /healthz. It is the escape hatch for
+// things gox has no option for; App.Add does the same after New.
 func Component(c lifecycle.Component) Option {
 	return func(b *Builder) error {
 		if c == nil {
@@ -139,6 +148,9 @@ func WithConfigPrefix(p string) Option {
 
 // WithConfig registers the service's own config struct, which must embed
 // BaseConfig. It is loaded and validated in the same pass as everything else.
+// Fields of the service's own struct set before New act as defaults; the
+// embedded BaseConfig is reset, so framework defaults come from options
+// such as WithVersion and WithShutdownTimeout.
 func WithConfig(dst any) Option {
 	return func(b *Builder) error {
 		if dst == nil {

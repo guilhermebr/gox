@@ -25,7 +25,8 @@ type SendReceipt struct {
 func (SendReceipt) Kind() string { return "send_receipt" }
 
 // receipts works SendReceipt jobs. A returned error retries with backoff
-// (25 attempts by default); the context is cancelled on shutdown.
+// (25 attempts by default). On shutdown a running job gets the shutdown
+// budget (SHOP_SHUTDOWN_TIMEOUT) to finish; only then is its context cancelled.
 type receipts struct {
 	river.WorkerDefaults[SendReceipt]
 	a *gox.App
@@ -51,21 +52,23 @@ func main() {
 	// SHOP_POSTGRES_URL. River's tables are created at boot (SHOP_JOBS_MIGRATE).
 	// An API next to a separate worker process sets SHOP_JOBS_WORK=false.
 	a := gox.MustNew("shop", gox.HTTP(), postgres.Enable(), jobs.Enable(postgres.From))
+	db, queue := postgres.From(a), jobs.From(a) // read once here; handlers take these, not the app
 
 	jobs.Register(a, &receipts{a: a})
 	jobs.Register(a, purger{})
 	// Cron, optionally with a zone ("CRON_TZ=America/New_York 0 0 * * *"), or "@every 5m".
 	if err := jobs.Schedule(a, "0 3 * * *", PurgeExports{}); err != nil {
+		a.Log().Error("jobs schedule", "error", err) // names the bad spec
 		os.Exit(1)
 	}
 
 	a.HandleFunc("POST /invoices/{id}/receipt", func(w http.ResponseWriter, r *http.Request) {
 		// InsertTx: the job exists only if the change that needs it commits.
-		err := pgx.BeginFunc(r.Context(), postgres.From(a), func(tx pgx.Tx) error {
+		err := postgres.Tx(r.Context(), db, func(tx pgx.Tx) error {
 			if _, err := tx.Exec(r.Context(), "UPDATE invoices SET receipt_requested = true WHERE id = $1", r.PathValue("id")); err != nil {
 				return err
 			}
-			_, err := jobs.From(a).InsertTx(r.Context(), tx, SendReceipt{InvoiceID: r.PathValue("id")}, nil)
+			_, err := queue.InsertTx(r.Context(), tx, SendReceipt{InvoiceID: r.PathValue("id")}, nil)
 			return err
 		})
 		if err != nil {

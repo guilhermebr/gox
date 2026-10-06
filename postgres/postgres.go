@@ -26,10 +26,12 @@ type options struct {
 // Option configures Enable.
 type Option func(*options)
 
-// WithMigrations runs the SQL migrations in fsys (golang-migrate layout:
-// NNNN_name.up.sql / .down.sql, anywhere in the tree) at boot, before the
+// WithMigrations runs the up migrations in fsys (golang-migrate layout:
+// NNNNNN_name.up.sql, at the root of fsys or under its single
+// subdirectory, as //go:embed migrations/*.sql gives) at boot, before the
 // app reports ready. POSTGRES_MIGRATE=false skips them for deployments that
-// migrate as a separate step; Migrate runs them standalone.
+// migrate as a separate step; Migrate runs them standalone. Nothing in gox
+// runs the .down.sql files.
 func WithMigrations(fsys fs.FS) Option {
 	return func(o *options) {
 		o.migrations = fsys
@@ -147,7 +149,8 @@ func (c *component) Ready(ctx context.Context) error {
 }
 
 // Tx runs fn in a transaction: commit when fn returns nil, rollback
-// otherwise (and on panic). The returned error is fn's error wrapped.
+// otherwise (and on panic). It returns fn's error unchanged; a failed begin
+// or commit comes back wrapped.
 func Tx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) (err error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {

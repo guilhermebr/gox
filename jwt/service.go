@@ -176,7 +176,10 @@ func (s *Service) GenerateTokenWithClaims(userID, email, accountType string, ext
 }
 
 // ValidateToken parses and verifies a token, returning its claims. Errors
-// wrap ErrInvalidToken or ErrInvalidClaims.
+// wrap ErrInvalidToken or ErrInvalidClaims. It checks the algorithm, the
+// signature, the expiry and not-before claims and the issuer (JWT_ISSUER,
+// default gox). It never checks the audience: compare Claims.Audience
+// yourself when one issuer signs tokens for several APIs.
 func (s *Service) ValidateToken(tokenString string) (*Claims, error) {
 	opts := []jwt.ParserOption{jwt.WithValidMethods([]string{s.method.Alg()})}
 	if s.issuer != "" {
@@ -196,8 +199,8 @@ func (s *Service) ValidateToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// RefreshWindow is how close to expiry a token must be for RefreshToken to
-// issue a new one.
+// RefreshWindow (5 minutes) is how close to expiry a token must be for
+// RefreshToken to issue a new one.
 const RefreshWindow = 5 * time.Minute
 
 // RefreshToken returns a fresh token when the supplied one is within

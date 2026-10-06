@@ -12,7 +12,8 @@ import (
 	"time"
 )
 
-// ErrNotFound is returned by Get, Stat and Delete for a key that does not exist.
+// ErrNotFound is returned by Get and Stat for a key that does not exist, and
+// by Delete from stores that answer 404 for one (Google Cloud Storage).
 var ErrNotFound = errors.New("storage: object not found")
 
 // Bucket is one object store. Keys are slash-separated paths chosen by the
@@ -24,7 +25,8 @@ type Bucket interface {
 	Get(ctx context.Context, key string) (io.ReadCloser, Info, error)
 	// Stat describes the object without reading it.
 	Stat(ctx context.Context, key string) (Info, error)
-	// Delete removes the object.
+	// Delete removes the object. A missing key is success on AWS S3 and
+	// ErrNotFound on stores that answer 404; treat both as done.
 	Delete(ctx context.Context, key string) error
 	// PresignPut returns a URL a client can PUT the object to, and the headers
 	// it must send with it. The constraints in opts are part of the signature:

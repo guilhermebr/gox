@@ -64,9 +64,12 @@ func From(a *gox.App) *Service {
 	return gox.MustValue[*Service](a, key{}, "jwt.From", "jwt.Enable()")
 }
 
-// Auth is the middleware for gox.WithAuth: it validates the bearer token
-// with svc and stores the claims for ClaimsFromContext. Failures are 401
-// envelopes.
+// Auth is middleware that requires a bearer token valid for svc and stores
+// its claims for ClaimsFromContext; wrap the handlers that need it with
+// Auth(From(a)), and use Enable(WithAuth()) to protect every route except
+// /healthz and /readyz. Failures are 401 envelopes. Auth exempts no path, so
+// gox.WithAuth(Auth(svc)) also answers 401 on the public /healthz and
+// /readyz.
 func Auth(svc *Service) gox.Middleware {
 	return middleware.Bearer(func(_ context.Context, token string) (any, error) {
 		return svc.ValidateToken(token)

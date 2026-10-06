@@ -2,6 +2,7 @@
 
 Date: 2026-09-13
 Status: accepted
+Amended: see the Notes of row 0005 in [README.md](README.md); the code wins.
 
 ## Context
 
@@ -23,7 +24,8 @@ better than any router.
   auth (`WithAuth`) → `WithMiddleware` → mux.
 - Route groups are expressed by wrapping: register protected handlers
   through a middleware, or split a subtree onto its own mux mounted with
-  `Handle("/admin/", http.StripPrefix(...))`. A recipe documents both.
+  `Handle("/admin/", http.StripPrefix(...))`. `docs/recipes/add-auth.md`
+  shows the wrapping.
 - Unmatched requests render the error envelope: `httpserver.Handler` asks
   the mux which built-in handler would run, then writes a 404
   (`not_found`) or 405 (`unimplemented`, with `Allow`) as JSON.
@@ -39,7 +41,7 @@ better than any router.
 ## Dependencies added
 
 The root module now depends on the OpenTelemetry SDK, its OTLP exporters,
-the Prometheus exporter and `otelhttp`, as the plan allows. Two extra
+the Prometheus exporter and `otelhttp`. Two extra
 dependencies come with that and are justified here:
 
 - `github.com/prometheus/client_golang`: `pkg/otel` needs `promhttp` to
@@ -66,4 +68,4 @@ pinned to their pseudo-versions keep resolving them.
 - oapi-codegen users switch the server target from `chi-server` to
   `std-http-server`.
 - No regex routes, no route-level middleware syntax. Both are available
-  through wrapping and are documented as recipes rather than API.
+  through wrapping rather than API; `docs/recipes/add-auth.md` wraps handlers.

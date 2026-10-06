@@ -6,6 +6,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/guilhermebr/gox"
 )
@@ -15,13 +16,19 @@ type invoice struct {
 	Amount int    `json:"amount"`
 }
 
-var invoices = map[string]invoice{"inv_1": {ID: "inv_1", Amount: 1250}}
+// An in-memory store for the example; handlers run concurrently, so it locks.
+var (
+	mu       sync.Mutex
+	invoices = map[string]invoice{"inv_1": {ID: "inv_1", Amount: 1250}}
+)
 
 func main() {
 	a := gox.MustNew("billing", gox.HTTP())
 
 	a.HandleFunc("GET /invoices/{id}", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		inv, ok := invoices[r.PathValue("id")]
+		mu.Unlock()
 		if !ok {
 			gox.Error(w, r, gox.NotFound("invoice %s", r.PathValue("id")))
 			return
@@ -39,7 +46,9 @@ func main() {
 			gox.Error(w, r, gox.InvalidArgument("amount must be positive").WithDetail("field", "amount"))
 			return
 		}
+		mu.Lock()
 		invoices[in.ID] = in
+		mu.Unlock()
 		_ = gox.JSON(w, http.StatusCreated, in)
 	})
 

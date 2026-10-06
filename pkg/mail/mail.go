@@ -36,8 +36,9 @@ type Attachment struct {
 	Data        []byte
 }
 
-// Sender delivers messages. The id is the provider's message id, for
-// matching delivery events later.
+// Sender delivers messages. The id is the provider's message id as its API
+// returns it; its delivery events may write it differently (Mailgun's
+// events drop the angle brackets its API returns).
 type Sender interface {
 	Send(ctx context.Context, m Message) (id string, err error)
 }

@@ -79,9 +79,9 @@ func Redirect(w http.ResponseWriter, r *http.Request, url string) {
 	http.Redirect(w, r, url, http.StatusSeeOther)
 }
 
-// Error renders err as an error page for requests that want HTML (htmx, or
-// Accept preferring text/html) and as the JSON envelope otherwise, with the
-// same status either way. It applies the app's error mappers like gox.Error.
+// Error is gox.Error: both render an error page for requests that want HTML
+// (htmx, or Accept preferring text/html) once web.Enable is passed, and the
+// JSON envelope otherwise, with the same status either way. Prefer gox.Error.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
 	httpx.Error(w, r, err)
 }

@@ -2,14 +2,14 @@
 
 ```
 cmd/<name>/main.go            # gox.MustNew + <feature>.Register(a) calls + a.Run()
-internal/<feature>/handler.go # net/http handlers for one feature; exposes Register(a *gox.App)
+internal/<feature>/handler.go # net/http handlers for one feature; exposes Register(a *gox.App, deps...)
 internal/<feature>/views/     # templ components for that feature (HTML apps)
 web/layout/*.templ            # layout(s) (HTML apps)
 web/components/*.templ        # shared components (HTML apps)
 migrations/migrations.go      # package migrations: //go:embed *.sql; var FS embed.FS
-migrations/NNNN_name.up.sql   # golang-migrate files (and .down.sql)
-static/static.go              # package static: //go:embed css js img; var FS embed.FS (HTML apps)
-.env.example                  # every <PREFIX>_* variable with its default
+migrations/NNNNNN_name.up.sql # golang-migrate files, run at boot (gox never runs .down.sql)
+static/static.go              # package static: //go:embed all:css all:js; var FS embed.FS (HTML apps)
+.env.example                  # the <PREFIX>_* variables to set; --help lists every one
 Makefile                      # build, test, lint, generate (templ), run
 ```
 

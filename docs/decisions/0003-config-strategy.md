@@ -2,6 +2,7 @@
 
 Date: 2026-09-13
 Status: accepted
+Amended: see the Notes of row 0003 in [README.md](README.md); the code wins.
 
 ## Context
 
@@ -29,9 +30,11 @@ four used `github.com/ardanlabs/conf/v3`.
   is first-class so existing services keep their unprefixed variables.
 - `HTTP_ADDR` defaults to `:8080` and honors `PORT` when unset, because
   Tsuru, Fly and Heroku inject it.
-- Fields set on the struct before loading act as defaults; conf keeps
-  non-zero values. `gox.WithVersion` and `gox.WithShutdownTimeout` work this
-  way, so the environment can still override them.
+- Fields of the service's own struct set before loading act as defaults;
+  conf keeps non-zero values. The embedded `BaseConfig` is not: `New` resets
+  it before loading, so a value assigned there beforehand is discarded. Its
+  defaults come from options (`gox.WithVersion`, `gox.WithShutdownTimeout`),
+  which the environment can still override.
 - Secrets carry `mask`. The effective configuration is logged at debug level
   with masked values.
 - Required-value errors are rewritten to name the full variable and the

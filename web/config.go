@@ -10,7 +10,7 @@ import (
 
 // Config is the WEB config section: <PREFIX>_WEB_*.
 type Config struct {
-	SessionSecret string        `conf:"mask,help:key for the session cookie; at least 32 bytes; required by WithSessions"`
+	SessionSecret string        `conf:"mask,help:key for the session cookie; at least 32 bytes; required by WithSessions in production (elsewhere a throwaway key is generated)"`
 	SessionName   string        `conf:"default:session"`
 	SessionMaxAge time.Duration `conf:"default:720h"`
 	SecureCookies string        `conf:"default:auto,help:auto | true | false; auto is on in production or behind X-Forwarded-Proto https"`

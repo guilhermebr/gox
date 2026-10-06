@@ -24,6 +24,7 @@ var FS embed.FS
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 
@@ -36,6 +37,7 @@ import (
 func main() {
 	bundle, err := i18n.Load(locales.FS, "en") // en is the fallback locale and must exist
 	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	// The locale comes from the "locale" cookie, then Accept-Language, and is

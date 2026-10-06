@@ -28,9 +28,13 @@ type Config struct {
 
 func main() {
 	// SHOP_S3_BUCKET, and for MinIO or R2: SHOP_S3_ENDPOINT, SHOP_S3_ACCESS_KEY_ID,
-	// SHOP_S3_SECRET_ACCESS_KEY. The bucket is checked at boot.
+	// SHOP_S3_SECRET_ACCESS_KEY. Google Cloud Storage: SHOP_S3_ENDPOINT=
+	// https://storage.googleapis.com with HMAC keys in the same two variables.
+	// The bucket is checked at boot. gox.HTTPClient() gives the SDK the app's
+	// outbound client: timeouts, tracing, request-id propagation.
 	var cfg Config
-	a := gox.MustNew("shop", gox.WithConfig(&cfg), gox.HTTP(), s3.Enable())
+	a := gox.MustNew("shop", gox.WithConfig(&cfg), gox.HTTP(), gox.HTTPClient(), s3.Enable())
+	bucket := s3.From(a) // read once here; handlers take the bucket, not the app
 	signer, err := storage.NewSigner([]byte(cfg.UploadSecret))
 	if err != nil {
 		a.Log().Error("upload secret", "error", err)
@@ -57,7 +61,7 @@ func main() {
 		random := make([]byte, 16)
 		_, _ = rand.Read(random)
 		key := "uploads/" + hex.EncodeToString(random) // never the client's filename
-		url, headers, err := s3.From(a).PresignPut(r.Context(), key, storage.PresignPutOptions{
+		url, headers, err := bucket.PresignPut(r.Context(), key, storage.PresignPutOptions{
 			ContentType: in.ContentType, ContentMD5: in.Checksum, ContentLength: in.ByteSize,
 		})
 		if err != nil {
@@ -86,7 +90,7 @@ func main() {
 			gox.Error(w, r, gox.InvalidArgument("the upload is not valid for this user"))
 			return
 		}
-		info, err := s3.From(a).Stat(r.Context(), up.Key) // it must really be there
+		info, err := bucket.Stat(r.Context(), up.Key) // it must really be there
 		if err != nil {
 			gox.Error(w, r, gox.InvalidArgument("the file was not uploaded"))
 			return
@@ -97,7 +101,7 @@ func main() {
 
 	// 3. Downloads are short-lived links, not proxied bytes.
 	a.HandleFunc("GET /attachments/{key...}", func(w http.ResponseWriter, r *http.Request) {
-		link, err := s3.From(a).PresignGet(r.Context(), r.PathValue("key"), storage.PresignGetOptions{Filename: "attachment.pdf"})
+		link, err := bucket.PresignGet(r.Context(), r.PathValue("key"), storage.PresignGetOptions{Filename: "attachment.pdf"})
 		if err != nil {
 			gox.Error(w, r, err)
 			return
@@ -113,5 +117,6 @@ func main() {
 
 Browsers need a CORS rule on the bucket allowing `PUT` from the site's
 origin with the signed headers. Server-side writes (exports, generated
-files) use `Put`; `Get`, `Stat` and `Delete` return `storage.ErrNotFound`
-for a missing key.
+files) use `Put`. `Get` and `Stat` return `storage.ErrNotFound` for a missing
+key; deleting a missing key is not an error on S3 (it answers 204), so treat
+`ErrNotFound` from `Delete` as done too.

@@ -57,7 +57,7 @@ func main() {
 	// gox.Component registers at StageUser: after datastores, before the
 	// HTTP server, stopped in reverse. a.Add(c) does the same after New.
 	a := gox.MustNew("echo",
-		gox.Component(&tcpEcho{addr: ":7"}),
+		gox.Component(&tcpEcho{addr: ":7007"}),
 	)
 	if err := a.Run(); err != nil {
 		os.Exit(1)

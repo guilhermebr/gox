@@ -6,7 +6,9 @@
 # extracts them into examples/recipes_build/<recipe>/, rewrites the
 # placeholder module path example.com/shop to the build location, runs
 # templ generate when needed, and vets the result inside the examples
-# module (which replaces every gox module with the working tree).
+# module; go.work resolves every gox module to the working tree.
+# README.md (the index) and agent instruction files (AGENTS.md, CLAUDE.md,
+# SKILL.md) are not recipes and are skipped by name.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,6 +20,9 @@ mkdir -p "$build"
 fail=0
 for recipe in "$root"/docs/recipes/*.md; do
 	name=$(basename "$recipe" .md)
+	case "$name" in
+	README | AGENTS | CLAUDE | SKILL) continue ;;
+	esac
 	dir="$build/$name"
 	mkdir -p "$dir"
 	python3 - "$recipe" "$dir" "$name" <<'EOF'
