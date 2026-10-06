@@ -124,9 +124,10 @@ func (b *Bundle) Messages(locale, prefix string) map[string]string {
 	return out
 }
 
-// Match picks the best loaded locale for an Accept-Language header: exact
-// tags first, then the language of a regional tag (es-MX → es), then a
-// regional catalog of a bare language (pt → pt-BR), in quality order.
+// Match picks the best loaded locale for an Accept-Language header: for
+// each tag in quality order, an exact catalog, else its language (es-MX →
+// es), else a regional catalog of that language (pt → pt-BR); the fallback
+// when no tag matches.
 func (b *Bundle) Match(acceptLanguage string) string {
 	type pref struct {
 		tag string

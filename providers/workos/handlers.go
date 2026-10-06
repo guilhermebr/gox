@@ -43,7 +43,8 @@ func Login(a *gox.App) http.HandlerFunc {
 
 // Callback returns the handler for the redirect URI: it checks the state,
 // exchanges the code, writes the session cookie and redirects to the path
-// Login remembered (or "/").
+// Login remembered (or "/"). It needs WithSessions, which reads that
+// cookie and requires the WORKOS_COOKIE_PASSWORD that seals it.
 func Callback(a *gox.App) http.HandlerFunc {
 	f := featureOf(a, "workos.Callback")
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +80,7 @@ func Callback(a *gox.App) http.HandlerFunc {
 // Logout returns the handler that clears the session cookie and redirects
 // to the WorkOS logout URL, which ends the session there and returns to
 // ?return_to= when the application configured it as a logout redirect.
+// Like EndSession, it panics on every request without WithSessions.
 func Logout(a *gox.App) http.HandlerFunc {
 	featureOf(a, "workos.Logout")
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +96,8 @@ func Logout(a *gox.App) http.HandlerFunc {
 // the browser should visit to end the session there too, or "" when the
 // request carried no session. returnTo must be a logout redirect configured
 // in WorkOS. It is what a single-page app calls from a fetch handler;
-// Logout is the redirecting form of it.
+// Logout is the redirecting form of it. It panics if WithSessions was not
+// passed to Enable.
 func EndSession(w http.ResponseWriter, r *http.Request, returnTo string) string {
 	st := stateFrom(r, "workos.EndSession")
 	target := ""

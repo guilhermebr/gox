@@ -21,7 +21,7 @@ import (
 // Violation is one way a request breaks the contract. A rejected request
 // carries them under the error's "errors" detail.
 type Violation struct {
-	Code    string `json:"code"`    // what kind of rule failed: "body", "query", "path", "header", "cookie"
+	Code    string `json:"code"`    // what kind of rule failed: "body", "query", "path", "header", "cookie" or "parameter"
 	Message string `json:"message"` // what is wrong, safe to show to the caller
 	Pointer string `json:"pointer"` // JSON pointer into the body ("/amountCents"), or "/<name>" for a parameter
 }
@@ -35,8 +35,9 @@ type Violation struct {
 //
 // Documents are usually embedded: openapi.Enable(api.Spec). Validation runs
 // with the other feature middleware, in the order the options are passed:
-// put an authenticating feature first so anonymous callers get a 401, not a
-// description of the contract.
+// put an authenticating feature first (jwt.Enable(jwt.WithAuth())) so
+// anonymous callers get a 401, not a description of the contract.
+// gox.WithAuth always runs after validation, whatever the order.
 func Enable(documents ...[]byte) gox.Option {
 	return func(b *gox.Builder) error {
 		if len(documents) == 0 {

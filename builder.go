@@ -16,7 +16,9 @@ import (
 // any factory runs.
 type Stage int
 
-// Stages. Feature packages pick the one that matches what they provide.
+// Stages start in this order, after config and logging and before the
+// admin server, and stop in reverse. Feature packages pick the one that
+// matches what they provide.
 const (
 	StageDatastore Stage = iota + 10 // databases, caches, message brokers
 	StageClient                      // clients of other services

@@ -16,7 +16,7 @@ type Config struct {
 	Address        string        `conf:"default:localhost:7233,help:host:port of the Temporal frontend"`
 	Namespace      string        `conf:"default:default"`
 	APIKey         string        `conf:"mask,help:Temporal Cloud API key; implies TLS"`
-	TLS            string        `conf:"default:auto,help:auto | true | false; auto is on with an API key or a client certificate"`
+	TLS            string        `conf:"default:auto,help:auto | true | false; auto is on with an API key or a client certificate or TLS_CA"`
 	TLSCert        string        `conf:"help:PEM client certificate for mTLS; needs TLS_KEY"`
 	TLSKey         string        `conf:"mask,help:PEM client key for mTLS"`
 	TLSCA          string        `conf:"env:TLS_CA,help:PEM root certificates that verify the server; the system pool is used when empty"`

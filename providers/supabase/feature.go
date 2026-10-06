@@ -18,6 +18,8 @@ type key struct{}
 
 // Enable registers the SUPABASE config section and a client component at
 // StageClient whose readiness probes the project's auth health endpoint.
+// The probe does not run at boot: a wrong URL or key starts and shows only
+// on /readyz.
 func Enable() gox.Option {
 	return func(b *gox.Builder) error {
 		cfg := &Config{}

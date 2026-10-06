@@ -45,8 +45,10 @@ func (a *App) Log() *slog.Logger { return a.log }
 // the struct it passed to WithConfig.
 func (a *App) Config() BaseConfig { return *a.cfg }
 
-// Health returns the registry behind /healthz and /readyz. Register extra
-// checks on it before Run.
+// Health returns the registry behind /healthz and /readyz: AddLiveness and
+// AddReadiness register a named func(ctx) error check before Run, and
+// IsReady reports the readiness gate (open once every component started,
+// closed when shutdown begins).
 func (a *App) Health() *health.Registry { return a.health }
 
 // Add registers user components at StageUser after New and before Run.

@@ -37,8 +37,10 @@ func WithStatic(fsys fs.FS) Option {
 	return func(o *options) { o.static = fsys }
 }
 
-// WithSessions enables the encrypted cookie session (SessionFrom) and CSRF
-// checks on every state-changing request. Needs WEB_SESSION_SECRET.
+// WithSessions enables the encrypted cookie session (SessionFrom) and a
+// CSRF check on every state-changing form submission (urlencoded, multipart
+// or no Content-Type). Needs WEB_SESSION_SECRET in production; elsewhere a
+// throwaway secret is generated and sessions do not survive a restart.
 func WithSessions() Option {
 	return func(o *options) { o.sessions = true }
 }
@@ -68,9 +70,9 @@ func WithSessionUser(fn func(r *http.Request, s *Session) (any, error)) Option {
 
 // WithCSRFExempt skips the CSRF check for paths with these prefixes, for
 // endpoints that third parties call with their own authentication
-// (webhooks). JSON requests are never checked: a cross-site request cannot
-// send application/json with cookies without a CORS preflight, which is off
-// by default.
+// (webhooks). Requests whose Content-Type is set and is not a form (JSON)
+// are never checked: a cross-site request cannot send application/json
+// with cookies without a CORS preflight, which is off by default.
 func WithCSRFExempt(prefixes ...string) Option {
 	return func(o *options) { o.csrfExempt = append(o.csrfExempt, prefixes...) }
 }

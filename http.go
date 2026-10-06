@@ -37,14 +37,16 @@ type (
 	httpClientKey struct{}
 )
 
-// HTTP declares the public HTTP server: a net/http ServeMux behind the
-// default middleware chain, /healthz and /readyz on the public port, and
-// 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
+// HTTP declares the public HTTP server: a net/http ServeMux behind a fixed
+// middleware chain, outermost first: error renderers → route capture →
+// recovery → request id → client ip → tracing → metrics → logging → error
+// mappers (WithErrorMapper) → timeout (HTTP_REQUEST_TIMEOUT) → max bytes
+// (HTTP_MAX_BODY_BYTES) → security headers → CORS (WithCORS only) →
+// cross-origin protection → feature middleware (feature options) → auth
+// (WithAuth) → WithMiddleware → mux. It serves /healthz and /readyz on the
+// public port, renders 404/405 as the error envelope, and enables a.Mux and
+// a.HandleFunc.
 //
-// Chain: error renderers → route capture → recovery → request id → client ip → tracing → metrics →
-// logging → error mappers (WithErrorMapper) → timeout → max bytes → security headers →
-// CORS (WithCORS) → cross-origin protection → feature middleware (Builder.Middleware) →
-// auth (WithAuth) → WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
 // The timeout buffers each response until its handler returns, so nothing
 // streams: no SSE, WebSockets or flushed chunks.
 func HTTP(opts ...HTTPOption) Option {

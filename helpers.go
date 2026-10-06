@@ -14,10 +14,11 @@ func JSON(w http.ResponseWriter, status int, v any) error {
 	return httpx.JSON(w, status, v)
 }
 
-// Error renders err as the standard envelope: the app's error mappers are
-// applied, the status comes from the error's code, the request id is
-// stamped, and server-side failures are logged with their cause. Client
-// errors are not logged.
+// Error renders err as the app's error response: the JSON envelope, the
+// shape WithErrorRenderer sets, or gox/web's error page for requests that
+// want HTML. The app's error mappers are applied, the status comes from the
+// error's code, the request id is stamped, and server-side failures are
+// logged with their cause. Client errors are not logged.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
 	httpx.Error(w, r, err)
 }

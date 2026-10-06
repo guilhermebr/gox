@@ -41,14 +41,14 @@ type Base struct {
 
 // HTTPConfig configures the public HTTP server.
 type HTTPConfig struct {
-	Addr              string        `conf:"help:listen address; PORT is honored when unset"`
+	Addr              string        `conf:"help:listen address; default :8080 or :$PORT when PORT is set"`
 	ReadHeaderTimeout time.Duration `conf:"default:10s"`
 	ReadTimeout       time.Duration `conf:"default:30s"`
 	WriteTimeout      time.Duration `conf:"default:30s"`
 	IdleTimeout       time.Duration `conf:"default:120s"`
 	RequestTimeout    time.Duration `conf:"default:30s,help:per-request deadline enforced by the middleware chain"`
 	MaxBodyBytes      int64         `conf:"default:1048576,help:request body limit in bytes"`
-	TrustedProxies    string        `conf:"help:CIDRs of the proxies in front of the service such as 10.0.0.0/8; X-Forwarded-For is believed only from them"`
+	TrustedProxies    string        `conf:"help:comma-separated CIDRs of the proxies in front of the service such as 10.0.0.0/8; X-Forwarded-For is believed only from them"`
 }
 
 // AdminConfig configures the ops server (/metrics, /healthz, /readyz, pprof).

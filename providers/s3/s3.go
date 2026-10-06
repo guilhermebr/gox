@@ -26,7 +26,8 @@ type key struct{}
 // Enable declares the bucket: it registers the S3 config section and a
 // component that checks at boot that the bucket is reachable with the
 // configured credentials (a typo fails the start, not the first upload)
-// and keeps reporting it through /readyz.
+// and keeps reporting it through /readyz. The client uses the app's
+// outbound HTTP client when gox.HTTPClient() is declared.
 func Enable() gox.Option {
 	return func(b *gox.Builder) error {
 		cfg := &Config{}

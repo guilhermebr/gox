@@ -48,8 +48,9 @@ type feature struct {
 	client *sdk.Client
 }
 
-// Enable registers the MAILGUN config section and builds the API client.
-// There is no lifecycle component: the client is a value.
+// Enable registers the MAILGUN config section and builds the API client on
+// the app's outbound HTTP client when gox.HTTPClient() is declared. There
+// is no lifecycle component: the client is a value.
 func Enable() gox.Option {
 	return func(b *gox.Builder) error {
 		cfg := &Config{}
@@ -82,7 +83,9 @@ func From(a *gox.App) *sdk.Client {
 }
 
 // Sender returns the mail.Sender that delivers through the API. Wrap it
-// with mail.Restrict outside production.
+// with mail.Restrict outside production. Send returns Mailgun's message id
+// in angle brackets (<id@domain>) and Event.MessageID has it without them:
+// trim "<>" before matching the two.
 func Sender(a *gox.App) mail.Sender {
 	return &sender{f: gox.MustValue[*feature](a, featureKey{}, "mailgun.Sender", "mailgun.Enable()")}
 }
@@ -130,14 +133,15 @@ type Event struct {
 	Type      string // accepted, delivered, failed, opened, clicked, unsubscribed, complained
 	Severity  string // for failed: temporary or permanent
 	Recipient string
-	MessageID string // the id Send returned, without angle brackets
+	MessageID string // the message id without angle brackets; Send returns it with them
 	Time      time.Time
 	Raw       json.RawMessage // the whole event-data object
 }
 
 // VerifyWebhook reads a delivery-event webhook, checks its signature with
 // MAILGUN_WEBHOOK_SIGNING_KEY and returns the event. A bad signature is an
-// unauthenticated error.
+// unauthenticated error. The timestamp's age is not checked, so a captured
+// request verifies again when replayed: drop events whose ID was seen.
 func VerifyWebhook(a *gox.App, r *http.Request) (*Event, error) {
 	f := gox.MustValue[*feature](a, featureKey{}, "mailgun.VerifyWebhook", "mailgun.Enable()")
 	body, err := io.ReadAll(r.Body)
@@ -193,9 +197,9 @@ type Inbound struct {
 }
 
 // ParseInbound reads a message forwarded by a Mailgun route (a multipart or
-// urlencoded form), checks its signature and returns it. The request body
-// limit of the service applies: raise HTTP_MAX_BODY_BYTES to accept
-// attachments.
+// urlencoded form), checks its signature (not its age, as VerifyWebhook)
+// and returns it. The request body limit of the service applies: raise
+// HTTP_MAX_BODY_BYTES to accept attachments.
 func ParseInbound(a *gox.App, r *http.Request) (*Inbound, error) {
 	f := gox.MustValue[*feature](a, featureKey{}, "mailgun.ParseInbound", "mailgun.Enable()")
 	if err := r.ParseMultipartForm(8 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {

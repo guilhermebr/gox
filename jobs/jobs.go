@@ -103,9 +103,11 @@ func Register[T river.JobArgs](a *gox.App, w river.Worker[T]) {
 		add(func(workers *river.Workers) { river.AddWorker(workers, w) })
 }
 
-// Schedule enqueues args on a schedule: a cron expression ("0 3 * * *",
-// optionally prefixed with a zone, "CRON_TZ=America/New_York 0 0 * * *") or
-// an interval ("@every 5m"). Only one process of a fleet enqueues each run.
+// Schedule enqueues args on a schedule, from the processes that work jobs
+// (JOBS_WORK=true with a worker registered) and never from an insert-only
+// one: a cron expression ("0 3 * * *", optionally prefixed with a zone,
+// "CRON_TZ=America/New_York 0 0 * * *") or an interval ("@every 5m"). Only
+// one process of a fleet enqueues each run.
 func Schedule(a *gox.App, spec string, args river.JobArgs) error {
 	f := gox.MustValue[*feature](a, featureKey{}, "jobs.Schedule", "jobs.Enable()")
 	schedule, err := cron.ParseStandard(spec)
