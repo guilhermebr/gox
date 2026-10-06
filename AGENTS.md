@@ -1,103 +1,70 @@
-# AGENTS.md — working inside the gox repository
+# AGENTS.md: changing gox itself
 
-This file is for AI agents (and humans) editing gox itself. For agents
-building a *service on* gox, see the `AGENTS.md` that `gox new` puts in
-every generated service (source: `cmd/gox/internal/scaffold/_template/base/AGENTS.md`)
-and `llm.txt`.
+Building a service on gox? Follow the `AGENTS.md` that `gox new` generated
+in it instead.
 
-## What gox is
+## Read first for your task
 
-An opinionated Go service framework: a root package that is the one import
-for a plain HTTP service, plus feature packages opted in by import
-(`postgres`, `jwt`, `supabase`, `web`). Read `docs/guide.md` for the
-design, `docs/features.md` for how feature packages plug in, and
-`docs/decisions/` for why each choice was made.
+- New module (feature package or provider; anything that adds a `go.mod`): `.claude/skills/gox-add-module/SKILL.md`
+- Tagging or releasing a module, or pointing one at a new root version: `.claude/skills/gox-release/SKILL.md`
+- Anything under `cmd/gox/internal/scaffold/`: `cmd/gox/internal/scaffold/AGENTS.md`
+- Docs that agents read (`docs/llm`, `docs/recipes`, `docs/decisions`, doc comments, `llm.txt`): `docs/AGENTS.md`
+- Anything under `providers/`: `providers/AGENTS.md`
+- Changing behaviour an ADR decided: `docs/decisions/README.md`, then only that ADR
 
-## Layout and dependency direction (lint-enforced)
+Otherwise this file is enough.
+
+## Layout and imports
+
+gox is a root package, the one import of a plain HTTP service, plus modules
+a service opts into by importing them. `go.work` lists every module.
 
 ```
-gox.go builder.go app.go run.go http.go errors.go helpers.go   root package
-pkg/lifecycle config log errors health admin middleware httpx httpserver httpclient otel storage mail i18n
-postgres/ jobs/ jwt/ openapi/ web/ feature packages, one module each
-providers/<name>/                  third-party service clients (mailgun, posthog, s3, stripe, supabase, temporal, workos), one module each, same rules as features
-examples/                          runnable examples, one module
-cmd/gox/                           CLI: `gox new` (scaffolder; template under internal/scaffold/_template) and `gox docs` (llm.txt generator)
-docs/llm/                          fragments assembled into llm.txt
-docs/decisions/                    ADRs
-docs/recipes/                      copy-pasteable tasks (build-checked)
+*.go                  root package
+pkg/<name>/           building blocks, inside the root module
+<feature>/            feature packages (postgres/, web/, ...), one module each
+providers/<name>/     third-party service clients, one module each
+monetary/ osrelease/  stdlib-only utilities
+examples/             runnable examples, one module
+cmd/gox/              CLI: gox new (scaffold) and gox docs (llm.txt)
+docs/                 llm/ (llm.txt sources), recipes/, decisions/ (ADRs)
 ```
 
-- root → `pkg/*`, stdlib, `ardanlabs/conf`, OpenTelemetry only.
-- feature packages → root + `pkg/*` + their own dependency; never each other.
-- `pkg/*` → other `pkg/*`, stdlib, third-party; never the root or a feature.
+- root → stdlib, `pkg/*`, `ardanlabs/conf`, OpenTelemetry.
+- `pkg/*` → stdlib, other `pkg/*`, third-party; never the root, a feature or a provider.
+- feature → root, `pkg/*`, its own dependency; never another feature or a provider.
+- provider → root, `pkg/*`, its own SDK; never a feature or another provider.
 - `monetary`, `osrelease` → stdlib only.
-- depguard enforces this (`.golangci.yml`); `make check-lint-rules` proves the rules fire.
+- depguard in `.golangci.yml` enforces these; `scripts/check-lint-rules.sh` (`make check-lint-rules`) proves each rule fires.
 
-## How to run checks
+## Done
 
-```
-make ci              # everything CI runs: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules
-make test            # race tests, every module
-make test-integration# needs DATABASE_URL pointing at a throwaway postgres database the tests own; CI provides one
-make lint            # golangci-lint v2 with the shared .golangci.yml
-make fmt             # gofumpt + goimports
-make generate        # templ generate for examples/web (CLI pinned to web/go.mod)
-make llm             # regenerate llm.txt after any public API or config change
-```
-
-The scaffold template lives in `cmd/gox/internal/scaffold/_template/{base,postgres,web}`
-(a leading underscore keeps Go tooling out of it; `all:_template` embeds it).
-`.tmpl` files are Go text templates over `scaffold.data`; `__name__` in a
-path becomes the service name. templ files there ship with their generated
-`_templ.go` (regenerate with `templ generate -path cmd/gox/internal/scaffold/_template/web`
-after changing them). `TestGeneratedServiceBuildsTestsAndAnswersHealthz`
-renders `--web` and `--postgres --web` against the working tree and runs
-them; keep it green.
-
-`make ci` must be green before a phase or a PR is considered done.
+- `make ci` is green: CI runs it and `make test-integration` (`make fmt` fixes
+  formatting). It needs golangci-lint v2.11.4, the CI pin, on PATH:
+  `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4`.
+- While iterating: `make test lint MODULES=./<module>` (the root module is `.`);
+  `go test -short ./cmd/gox/...` skips the scaffold end-to-end test.
+- Integration tests (`make test-integration`) skip silently without DATABASE_URL
+  (postgres, jobs), S3_TEST_* (providers/s3) or TEMPORAL_ADDRESS
+  (providers/temporal): look for SKIP in `go test -tags integration -v`.
+- One commit per logical step, one line: `type(scope): subject`, the scope
+  being the module or package, if any. No Co-authored-by or other attribution trailers.
 
 ## Rules
 
 - Test first. Every exported function has a test that failed before the code existed.
-- Every exported identifier has a doc comment; the first sentence ends up in `llm.txt`, so make it the useful one.
-- One way to do each thing. Do not add an alias, a second constructor, or an option that duplicates config.
+- Every exported identifier has a doc comment; `llm.txt` keeps only its first sentence, so make that the useful one.
+- One way to do each thing: no alias, no second constructor, no option that duplicates config.
 - Every panic and startup error names the fix: `gox: postgres.From called but postgres.Enable() was not passed to gox.New`, `BILLING_POSTGRES_URL is required`.
-- Config: fields on structs with `conf` tags; no direct `os.Getenv`. Help text must not contain commas (conf splits tag options on commas).
+- Config is struct fields with `conf` tags, never `os.Getenv`. Secrets carry `mask`. `help:` text has no commas (conf splits tag options on commas).
 - Errors wrap with the package prefix: `fmt.Errorf("postgres: connect: %w", err)`.
 - Context is the first parameter, never stored in a struct.
-- Commit per logical step with a single-line message. No attribution footers.
-
-## Adding a feature package
-
-1. `mkdir <name> && go mod init github.com/guilhermebr/gox/<name>`; add `require github.com/guilhermebr/gox <latest tag>`; add `./<name>` to `go.work`, which is what makes the working tree win locally. Do not add a `replace` back to the root: Go ignores a replace in a dependency's go.mod, so a module that needs one is broken for everyone who imports it by version.
-2. `Config` struct with `conf` tags and a `Validate() error`.
-3. `Enable(opts ...Option) gox.Option` that calls `b.ConfigSection("<NAME>", cfg, "<name>.Enable()")` and registers a `b.Component(stage, factory)` (or `b.Setup` for a value with no lifecycle, `b.Finish` to decorate another feature's output, `b.Middleware` for request middleware, `b.ErrorRenderer` for error output).
-4. `From(a *gox.App) T` implemented as `gox.MustValue[T](a, key{}, "<name>.From", "<name>.Enable()")`.
-5. Tests through a real `gox.New`, an example under `examples/`, a depguard rule in `.golangci.yml`, a line in `cmd/gox/main.go`'s spec so `llm.txt` documents it, a probe line in the Makefile's `check-deps`, and an ADR.
-
-## Releasing a module
-
-Modules are versioned independently and tagged `<module>/vX.Y.Z` (the root is
-plain `vX.Y.Z`). The order matters, because a nested module cannot reference a
-root version that is not fetchable yet:
-
-1. Tag and push the root: `git tag v0.2.0 && git push origin v0.2.0`.
-2. In each module to release, point it at that version
-   (`go mod edit -dropreplace=github.com/guilhermebr/gox -require=github.com/guilhermebr/gox@v0.2.0`),
-   commit, then tag `<module>/v0.2.0` and push.
-3. Prove it resolves outside the workspace: `GOWORK=off go build ./...` in the
-   module. `make ci` runs under `go.work` and will pass either way, so it
-   cannot tell you whether a tag works.
-
-Released so far: root, `jwt`, `postgres`, `jobs`, `openapi`,
-`providers/temporal` at `v0.1.0`; `providers/s3` at `v0.1.1`; `providers/workos` at `v0.1.2`. The rest still
-carry `v0.0.0` and a local `replace`; they are unreleased, and the first
-consumer to need one triggers the steps above.
+- Never edit generated files: `llm.txt` comes from `docs/llm/*.md` and doc comments via `make llm`; `*_templ.go` from `.templ` files via `make generate`.
+- Never break a public API, even when asked to rename or remove: keep the old name as a `// Deprecated:` wrapper for one minor version.
+- A released module that starts using new root API needs a root release first. `go.work` hides the gap; `GOWORK=off go build ./...` in the module shows it.
 
 ## Never
 
-- Never add uber-go/fx, dig, wire, a third-party router, or an ORM.
-- Never import a heavy dependency from the root or from `pkg/*`.
-- Never use build tags, `init()` registration, or blank imports as an opt-in mechanism.
-- Never edit `llm.txt` by hand; edit `docs/llm/*.md` or the source and run `make llm`.
-- Never silently break a public API; deprecate for one minor version first.
+- uber-go/fx, dig, wire, a third-party router or an ORM.
+- A heavy dependency imported from the root or from `pkg/*`.
+- Build tags, `init()` registration or blank imports as an opt-in mechanism.

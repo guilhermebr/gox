@@ -20,20 +20,9 @@ what it imports (ADR 0000). Building blocks a service is made of (a
 datastore, auth, HTML) live at the top level; a client for a third-party
 service (a cloud or SaaS API) lives under `providers/<name>`.
 
-```
-mkdir redis && cd redis
-go mod init github.com/guilhermebr/gox/redis
-go get github.com/redis/go-redis/v9
-```
-
-Until the root is tagged, add to `go.mod`:
-
-```
-require github.com/guilhermebr/gox v0.0.0
-replace github.com/guilhermebr/gox => ../
-```
-
-and `./redis` to the repository's `go.work`.
+Creating the module and wiring it into the repository follow one
+checklist, `.claude/skills/gox-add-module/SKILL.md`; this page walks
+through the code.
 
 ## 2. Config
 
@@ -179,13 +168,3 @@ func TestHelpListsTheSection(t *testing.T) {
 
 Integration tests run behind `//go:build integration` against an address
 from the environment.
-
-## 5. Wiring it into the repository
-
-- A depguard rule in `.golangci.yml` (copy the `feature-postgres` block).
-- A line in `cmd/gox/main.go`'s spec so `llm.txt` documents the API and
-  the variables; then `make llm`.
-- A probe in the Makefile's `check-deps` proving an example that does not
-  import the feature does not link its dependency.
-- An example under `examples/` and a recipe under `docs/recipes/`.
-- An ADR in `docs/decisions/` saying why this dependency and this design.

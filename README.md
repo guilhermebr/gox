@@ -22,10 +22,11 @@ plumbing.
 1. **The common path is one import.** A plain HTTP service imports only
    `github.com/guilhermebr/gox`. Lifecycle, config, logging, tracing, metrics,
    health, the admin server and the HTTP server live in the root.
-2. **Heavy integrations are opt-in by import.** Postgres, JWT, Supabase and
-   server-rendered HTML are subpackages with an `Enable()` option and a
-   `From(app)` accessor. A service that does not import `gox/postgres` never
-   compiles pgx. CI proves it on every build.
+2. **Heavy integrations are opt-in by import.** Postgres, background jobs,
+   auth, server-rendered HTML and third-party clients live in their own
+   modules: importing one and passing its `Enable()` option to `gox.New` is
+   the opt-in. A service that does not import `gox/postgres` never compiles
+   pgx. CI proves it on every build.
 
 ## A JSON API, one import
 
@@ -120,7 +121,8 @@ A server-rendered HTML app on templ is the same shape with `gox/web`; see
 
 ## The opinions
 
-gox chooses once so you do not. Each choice has an ADR in `docs/decisions/`.
+gox chooses once so you do not. Most choices have an ADR in `docs/decisions/`;
+its `README.md` indexes them.
 
 | gox chooses | because |
 |---|---|
@@ -141,9 +143,8 @@ gox chooses once so you do not. Each choice has an ADR in `docs/decisions/`.
 - `gox.WithMiddleware` appends to the chain; `gox.WithAuth` fills the auth
   slot; `gox.WithErrorMapper` translates your own sentinels.
 - `a.Mux()` is the plain `*http.ServeMux`.
-- `pkg/*` is importable: `pkg/lifecycle`, `pkg/config`, `pkg/log`,
-  `pkg/errors`, `pkg/health`, `pkg/middleware`, `pkg/httpx`,
-  `pkg/httpserver`, `pkg/httpclient`, `pkg/otel`. Services rarely need them.
+- `pkg/*` is importable: services use `pkg/storage`, `pkg/mail`, `pkg/i18n`,
+  `pkg/middleware` and `pkg/httpclient` directly and rarely need the rest.
 
 ## Writing a feature package
 
@@ -152,9 +153,10 @@ Every feature has the same shape: `Config`, `Enable(opts...) gox.Option`,
 `ConfigSection`, `Component`, `Setup`, `Finish`, `Middleware`,
 `ErrorRenderer` and `Set`. `docs/features.md` walks through one.
 
-Building blocks a service is made of (`postgres`, `jobs`, `jwt`, `openapi`, `web`) live at the
-top level. Clients for third-party services live under `providers/`, one
-module each (`providers/mailgun`, `providers/posthog`, `providers/s3`, `providers/stripe`, `providers/supabase`, `providers/temporal`, `providers/workos`; more cloud and SaaS APIs later).
+Building blocks a service is made of (`postgres`, `web`, ...) live at the
+top level, one module each. Clients for third-party services live under
+`providers/`, one module each; `providers/README.md` lists them. Adding
+either follows one checklist: `.claude/skills/gox-add-module/SKILL.md`.
 
 ## Start a service
 
@@ -166,15 +168,15 @@ cd billing && make run
 
 `gox new` renders `cmd/<name>/main.go`, an example feature with a test,
 `.env.example`, a Makefile, a distroless Dockerfile, a lint config, a CI
-workflow, `AGENTS.md` and `CLAUDE.md`. `--postgres` adds a `migrations`
-package and `postgres.Enable`; `--web` adds a templ layout, a home page and
-embedded static assets. The result builds, tests, runs and answers
-`/healthz` with zero edits; a test in this repository proves it on every
-commit.
+workflow, `AGENTS.md`, `CLAUDE.md` and agent skills under `.claude/skills/`.
+`--postgres` adds a `migrations` package and `postgres.Enable`; `--web` adds
+a templ layout, a home page and embedded static assets. The result builds,
+tests, runs and answers `/healthz` with zero edits; a test in this
+repository proves it on every commit.
 
 ## Documentation
 
-- `llm.txt`: the complete reference for models, generated from source.
+- `llm.txt`: a single-file export for models, generated from source.
 - `docs/guide.md`: build a service end to end.
 - `docs/features.md`: write your own `Enable()`/`From()` package.
 - `docs/recipes/`: one complete, build-checked example per task.
