@@ -38,41 +38,67 @@ func (m Monetary) String() string {
 // GetAsset returns the asset this amount is denominated in.
 func (m Monetary) GetAsset() Asset { return m.Asset }
 
-// NewMonetary creates an amount in the asset's smallest unit. It rejects nil
-// and negative amounts.
+// NewMonetary creates an amount in the asset's smallest unit. Amounts are
+// signed: a credit, a refund or a printed negative balance is a negative amount.
 func NewMonetary(asset Asset, amount *big.Int) (*Monetary, error) {
 	if amount == nil {
 		return nil, ErrNilAmount
 	}
-	if amount.Sign() < 0 {
-		return nil, ErrNegativeAmount
-	}
 	return &Monetary{Asset: asset, Amount: new(big.Int).Set(amount)}, nil
 }
 
-// NewMonetaryFromString parses a decimal string such as "100.50" using the
-// asset's precision.
+// NewMonetaryFromString parses a decimal string such as "100.50" or "-0.25"
+// exactly, using the asset's precision. More decimals than the asset has is
+// ErrPrecision, never a silent truncation; trailing zeros beyond it are fine.
 func NewMonetaryFromString(asset Asset, amountStr string) (*Monetary, error) {
-	if amountStr == "" {
-		return nil, fmt.Errorf("amount string cannot be empty")
+	s := strings.TrimSpace(amountStr)
+	if s == "" {
+		return nil, fmt.Errorf("monetary: amount string cannot be empty")
 	}
-
-	// Parse the decimal value
-	decimal, ok := new(big.Float).SetString(amountStr)
+	neg := false
+	switch s[0] {
+	case '-':
+		neg, s = true, s[1:]
+	case '+':
+		s = s[1:]
+	}
+	whole, frac, _ := strings.Cut(s, ".")
+	if (whole == "" && frac == "") || !allDigits(whole) || !allDigits(frac) {
+		return nil, fmt.Errorf("monetary: invalid decimal format: %s", amountStr)
+	}
+	if whole == "" {
+		whole = "0"
+	}
+	if len(frac) > asset.Precision {
+		if strings.Trim(frac[asset.Precision:], "0") != "" {
+			return nil, ErrPrecision
+		}
+		frac = frac[:asset.Precision]
+	}
+	frac += strings.Repeat("0", asset.Precision-len(frac))
+	amount, ok := new(big.Int).SetString(whole+frac, 10)
 	if !ok {
-		return nil, fmt.Errorf("invalid decimal format: %s", amountStr)
+		return nil, fmt.Errorf("monetary: invalid decimal format: %s", amountStr)
 	}
-
-	return NewMonetaryFromDecimal(asset, decimal), nil
+	if neg {
+		amount.Neg(amount)
+	}
+	return &Monetary{Asset: asset, Amount: amount}, nil
 }
 
-// ValidateMonetary reports whether mon has a non-nil, non-negative amount.
+func allDigits(s string) bool {
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateMonetary reports whether mon has an amount.
 func ValidateMonetary(mon Monetary) error {
 	if mon.Amount == nil {
 		return ErrNilAmount
-	}
-	if mon.Amount.Sign() < 0 {
-		return ErrNegativeAmount
 	}
 	return nil
 }
@@ -86,26 +112,19 @@ func (m *Monetary) Add(other *Monetary) (*Monetary, error) {
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
 }
 
-// Subtract returns m - other. Both must share the same asset and the result
-// must not be negative.
+// Subtract returns m - other, which may be negative. Both must share the same asset.
 func (m *Monetary) Subtract(other *Monetary) (*Monetary, error) {
 	if m.Asset.Asset != other.Asset.Asset {
 		return nil, fmt.Errorf("cannot subtract different assets: %s and %s", m.Asset.Asset, other.Asset.Asset)
 	}
 	result := new(big.Int).Sub(m.Amount, other.Amount)
-	if result.Sign() < 0 {
-		return nil, ErrNegativeAmount
-	}
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
 }
 
-// Multiply returns m scaled by an integer factor.
+// Multiply returns m scaled by an integer factor, which may be negative.
 func (m *Monetary) Multiply(factor *big.Int) (*Monetary, error) {
 	if factor == nil {
 		return nil, fmt.Errorf("factor cannot be nil")
-	}
-	if factor.Sign() < 0 {
-		return nil, fmt.Errorf("factor cannot be negative")
 	}
 	result := new(big.Int).Mul(m.Amount, factor)
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
@@ -120,10 +139,7 @@ func (m *Monetary) Divide(divisor *big.Int) (*Monetary, error) {
 	if divisor.Sign() == 0 {
 		return nil, ErrDivisionByZero
 	}
-	if divisor.Sign() < 0 {
-		return nil, fmt.Errorf("divisor cannot be negative")
-	}
-	result := new(big.Int).Div(m.Amount, divisor)
+	result := new(big.Int).Quo(m.Amount, divisor)
 	return &Monetary{Asset: m.Asset, Amount: result}, nil
 }
 
@@ -132,19 +148,51 @@ func (m *Monetary) IsZero() bool {
 	return m.Amount != nil && m.Amount.Sign() == 0
 }
 
-// FormatAmount renders the amount as a decimal string using the asset's precision.
+// Sign returns -1, 0 or +1 by the sign of the amount; a nil amount is 0.
+func (m *Monetary) Sign() int {
+	if m.Amount == nil {
+		return 0
+	}
+	return m.Amount.Sign()
+}
+
+// Neg returns -m.
+func (m *Monetary) Neg() *Monetary {
+	if m.Amount == nil {
+		return &Monetary{Asset: m.Asset}
+	}
+	return &Monetary{Asset: m.Asset, Amount: new(big.Int).Neg(m.Amount)}
+}
+
+// Int64 returns the amount in the asset's smallest unit as an int64, and false
+// when the amount is nil or does not fit. It is the bridge to integer columns and
+// wire formats that carry cents.
+func (m *Monetary) Int64() (int64, bool) {
+	if m.Amount == nil || !m.Amount.IsInt64() {
+		return 0, false
+	}
+	return m.Amount.Int64(), true
+}
+
+// FormatAmount renders the amount as a decimal string using the asset's
+// precision, with a leading minus for a negative amount.
 func (m *Monetary) FormatAmount() string {
 	if m.Amount == nil {
 		return "nil"
 	}
-
-	if m.Asset.Precision == 0 {
+	p := m.Asset.Precision
+	if p <= 0 {
 		return m.Amount.String()
 	}
-
-	// Convert to decimal representation
-	decimal := m.ToDecimal()
-	return decimal.Text('f', m.Asset.Precision)
+	digits := new(big.Int).Abs(m.Amount).String()
+	if len(digits) <= p {
+		digits = strings.Repeat("0", p-len(digits)+1) + digits
+	}
+	out := digits[:len(digits)-p] + "." + digits[len(digits)-p:]
+	if m.Amount.Sign() < 0 {
+		out = "-" + out
+	}
+	return out
 }
 
 // FindAssetBySymbol looks up a well-known asset by its display symbol.
@@ -308,7 +356,12 @@ func (e Error) Error() string { return string(e) }
 // Errors returned by the monetary operations.
 const (
 	ErrNilAmount      Error = "amount cannot be nil"
-	ErrNegativeAmount Error = "amount cannot be negative"
 	ErrAssetMismatch  Error = "assets do not match"
 	ErrDivisionByZero Error = "division by zero"
+	ErrPrecision      Error = "amount has more decimals than the asset's precision"
+
+	// ErrNegativeAmount is kept for callers that compare against it.
+	//
+	// Deprecated: amounts are signed; nothing in this package returns it.
+	ErrNegativeAmount Error = "amount cannot be negative"
 )

@@ -72,8 +72,12 @@ func TestVerySmallAmounts(t *testing.T) {
 }
 
 func TestDecimalPrecisionLoss(t *testing.T) {
-	// Test that precision is maintained through conversion
-	original := "123.456789"
+	// More decimals than the asset has is an error, never a silent truncation.
+	if _, err := NewMonetaryFromString(USD, "123.456789"); err != ErrPrecision {
+		t.Fatalf("expected ErrPrecision, got %v", err)
+	}
+	// A valid amount survives the round trip through big.Float.
+	original := "123.45"
 	usd, err := NewMonetaryFromString(USD, original)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -242,14 +246,16 @@ func TestCopyIndependence(t *testing.T) {
 }
 
 func TestNegativeSubtractionEdgeCases(t *testing.T) {
-	// Test edge cases around negative subtraction
+	// Amounts are signed: subtracting a larger amount yields a negative one.
 	small, _ := NewMonetaryFromString(USD, "0.01")
 	large, _ := NewMonetaryFromString(USD, "100.00")
 
-	// This should fail
-	_, err := small.Subtract(large)
-	if err == nil {
-		t.Errorf("expected error when subtracting larger from smaller")
+	negative, err := small.Subtract(large)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if negative.FormatAmount() != "-99.99" || negative.Sign() != -1 {
+		t.Errorf("expected -99.99, got %s", negative.FormatAmount())
 	}
 
 	// Test subtracting exactly equal amounts
