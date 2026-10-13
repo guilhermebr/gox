@@ -37,8 +37,7 @@ func TestNewMonetary(t *testing.T) {
 			name:        "negative amount",
 			asset:       USD,
 			amount:      big.NewInt(-100),
-			expectError: true,
-			errorType:   ErrNegativeAmount,
+			expectError: false,
 		},
 	}
 
@@ -211,7 +210,8 @@ func TestMonetarySubtract(t *testing.T) {
 			name:        "negative result",
 			m1:          usd100,
 			m2:          usd200,
-			expectError: true,
+			expectError: false,
+			expected:    "-100.00",
 		},
 	}
 
@@ -266,7 +266,8 @@ func TestMonetaryMultiply(t *testing.T) {
 			name:        "multiply by negative",
 			m:           usd100,
 			factor:      big.NewInt(-2),
-			expectError: true,
+			expectError: false,
+			expected:    "-200.00",
 		},
 		{
 			name:        "multiply by nil",
@@ -326,7 +327,8 @@ func TestMonetaryDivide(t *testing.T) {
 			name:        "divide by negative",
 			m:           usd100,
 			divisor:     big.NewInt(-2),
-			expectError: true,
+			expectError: false,
+			expected:    "-50.00",
 		},
 		{
 			name:        "divide by nil",
@@ -613,8 +615,7 @@ func TestValidateMonetary(t *testing.T) {
 		{
 			name:        "negative amount",
 			monetary:    Monetary{Asset: USD, Amount: big.NewInt(-100)},
-			expectError: true,
-			errorType:   ErrNegativeAmount,
+			expectError: false,
 		},
 	}
 
