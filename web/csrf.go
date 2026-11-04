@@ -63,6 +63,12 @@ func (f *feature) csrfMiddleware(next http.Handler) http.Handler {
 		}
 		s := SessionFrom(r)
 		expected, _ := s.Get(keyCSRF)
+		if expected == "" {
+			// No token was ever issued: refuse before reading (and, for
+			// multipart, spilling to disk) a body that cannot pass.
+			httpx.Error(w, r, errors.PermissionDenied("invalid or missing CSRF token"))
+			return
+		}
 		got := r.Header.Get(HeaderCSRF)
 		if got == "" && isForm(r) {
 			if err := parseForm(r); err != nil {
@@ -71,7 +77,7 @@ func (f *feature) csrfMiddleware(next http.Handler) http.Handler {
 			}
 			got = r.PostForm.Get(FieldCSRF)
 		}
-		if expected == "" || got == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(got)) != 1 {
+		if got == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(got)) != 1 {
 			httpx.Error(w, r, errors.PermissionDenied("invalid or missing CSRF token"))
 			return
 		}
