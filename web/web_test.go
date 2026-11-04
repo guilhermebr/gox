@@ -1,10 +1,12 @@
 package web_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -456,5 +458,63 @@ func TestCSRFAppliesToFormsNotToJSONOrExemptPrefixes(t *testing.T) {
 	resp, _ = postForm(t, c, base+"/webhooks/stripe", url.Values{"event": {"paid"}})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("exempt prefix = %d, want 201", resp.StatusCode)
+	}
+}
+
+func TestCSRFReadsTheFieldOfMultipartForms(t *testing.T) {
+	t.Setenv("SHOP_WEB_SESSION_SECRET", "0123456789abcdef0123456789abcdef")
+	c, base := run(t, []web.Option{web.WithSessions()}, func(a *gox.App) {
+		a.HandleFunc("GET /token", func(w http.ResponseWriter, r *http.Request) {
+			_ = web.Partial(w, r, text(web.PageFrom(r).CSRFToken))
+		})
+		a.HandleFunc("POST /upload", func(w http.ResponseWriter, r *http.Request) {
+			f, hdr, err := r.FormFile("file")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			defer func() { _ = f.Close() }()
+			b, _ := io.ReadAll(f)
+			_, _ = io.WriteString(w, hdr.Filename+"="+string(b)+";note="+r.FormValue("note"))
+		})
+	})
+	resp, err := c.Get(base + "/token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	token := string(tb)
+
+	post := func(token string) (int, string) {
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		if token != "" {
+			_ = mw.WriteField("_csrf", token)
+		}
+		_ = mw.WriteField("note", "hi")
+		fw, _ := mw.CreateFormFile("file", "items.csv")
+		_, _ = io.WriteString(fw, "a,b")
+		_ = mw.Close()
+		req, _ := http.NewRequest(http.MethodPost, base+"/upload", &buf)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return resp.StatusCode, string(b)
+	}
+
+	if code, _ := post(""); code != http.StatusForbidden {
+		t.Fatalf("multipart without a token = %d, want 403", code)
+	}
+	if code, _ := post("wrong"); code != http.StatusForbidden {
+		t.Fatalf("multipart with a wrong token = %d, want 403", code)
+	}
+	code, body := post(token)
+	if code != http.StatusOK || body != "items.csv=a,b;note=hi" {
+		t.Fatalf("multipart with the token = %d %q; the handler must still read the file and fields", code, body)
 	}
 }

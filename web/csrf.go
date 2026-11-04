@@ -21,6 +21,12 @@ const HeaderCSRF = "X-CSRF-Token"
 // FieldCSRF ("_csrf") is the hidden form field regular forms send the token in; a missing or wrong token is a 403.
 const FieldCSRF = "_csrf"
 
+// csrfMultipartMemory is how much of a multipart body the CSRF check keeps in
+// memory while parsing it (the http.Request.FormFile default); larger files
+// spill to temporary files. The parsed form stays on the request, so the
+// handler's FormFile and FormValue read it without parsing again.
+const csrfMultipartMemory = 32 << 20
+
 // csrfToken returns the session's token, creating it on first use.
 func csrfToken(s *Session) string {
 	if t, ok := s.Get(keyCSRF); ok && t != "" {
@@ -33,7 +39,7 @@ func csrfToken(s *Session) string {
 	return t
 }
 
-// csrfMiddleware refuses form submissions whose token does not match the
+// csrfMiddleware refuses form submissions (urlencoded or multipart) whose token does not match the
 // session's. Safe methods pass, exempt prefixes pass, and so do requests
 // whose body is not a form (JSON APIs): browsers cannot send those
 // cross-site with cookies without a CORS preflight, and the session cookie
@@ -59,7 +65,10 @@ func (f *feature) csrfMiddleware(next http.Handler) http.Handler {
 		expected, _ := s.Get(keyCSRF)
 		got := r.Header.Get(HeaderCSRF)
 		if got == "" && isForm(r) {
-			_ = r.ParseForm()
+			if err := parseForm(r); err != nil {
+				httpx.Error(w, r, errors.InvalidArgument("unreadable form body: %v", err))
+				return
+			}
 			got = r.PostForm.Get(FieldCSRF)
 		}
 		if expected == "" || got == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(got)) != 1 {
@@ -68,6 +77,16 @@ func (f *feature) csrfMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// parseForm fills r.PostForm from a urlencoded or a multipart body.
+// ParseForm alone ignores multipart bodies, which left every file-upload
+// form without its token.
+func parseForm(r *http.Request) error {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		return r.ParseMultipartForm(csrfMultipartMemory)
+	}
+	return r.ParseForm()
 }
 
 func isForm(r *http.Request) bool {
