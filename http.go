@@ -24,6 +24,7 @@ type HTTPOption func(*httpOptions)
 type httpOptions struct {
 	cors *CORSConfig
 	spa  *SPAConfig
+	sse  *SSEConfig
 }
 
 // WithCORS enables CORS for the given configuration. It is never on by
@@ -41,7 +42,7 @@ type (
 // default middleware chain, /healthz and /readyz on the public port, and
 // 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
 //
-// Chain: error renderers → route capture → recovery → request id → client ip → tracing → metrics →
+// Chain: error renderers → route capture → stream capture (WithSSE) → recovery → request id → client ip → tracing → metrics →
 // logging → timeout → max bytes → security headers → CORS (WithCORS) →
 // cross-origin protection → feature middleware (Builder.Middleware) → auth (WithAuth) →
 // WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
@@ -55,6 +56,9 @@ func HTTP(opts ...HTTPOption) Option {
 			opt(o)
 		}
 		b.http = o
+		if o.sse != nil {
+			b.Component(StageUser, func(a *App) (lifecycle.Component, error) { return newSSE(a, b, *o.sse) })
+		}
 		b.Component(StageServer, func(a *App) (lifecycle.Component, error) {
 			cfg := a.cfg.HTTP
 			metrics, err := middleware.Metrics(a.otel.Meter)
@@ -72,6 +76,17 @@ func HTTP(opts ...HTTPOption) Option {
 					_, pattern := mux.Handler(r)
 					return pattern
 				}),
+			}
+			if hub, ok := Value[*SSEHub](a, sseKey{}); ok {
+				// Only the SSE route is exempt from the request timeout and
+				// the server's read and write deadlines.
+				mux.Handle("GET "+hub.Path(), middleware.Streaming(hub))
+				chain = append(chain, middleware.StreamCapture(func(r *http.Request) http.Handler {
+					h, _ := mux.Handler(r)
+					return h
+				}))
+			}
+			chain = append(chain,
 				middleware.Recovery(a.log),
 				middleware.RequestID(),
 				clientIP,
@@ -82,7 +97,7 @@ func HTTP(opts ...HTTPOption) Option {
 				middleware.Timeout(cfg.RequestTimeout),
 				middleware.MaxBytes(cfg.MaxBodyBytes),
 				middleware.SecurityHeaders(),
-			}
+			)
 			var trusted []string
 			if o.cors != nil {
 				chain = append(chain, middleware.CORS(*o.cors))

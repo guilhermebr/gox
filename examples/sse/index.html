@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>gox SSE example</title>
+    <style>
+        body {
+            font: 14px system-ui;
+            margin: 2rem
+        }
+
+        pre {
+            background: #f4f4f4;
+            padding: 1rem;
+            min-height: 12rem
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Order updates</h1>
+    <p>Subscribed to <code>/orders/{id}</code> and, privately, <code>/users/ana</code>. In another terminal:</p>
+    <pre id="log"></pre>
+    <script>
+        const log = (s) => document.getElementById("log").textContent += s + "\n";
+        
+        const q = new URLSearchParams();
+        q.append("topic", "/orders/{id}");
+        q.append("topic", "/users/ana");
+        
+        const events = new EventSource("/events?" + q, {
+            withCredentials: true,
+        });
+        events.onopen = () => log("connected");
+        events.onerror = () => log("disconnected; the browser reconnects with Last-Event-ID");
+        events.addEventListener("order.paid", (e) => log("order.paid " + e.data));
+        events.addEventListener("notice", (e) => log("private notice " + e.data));
+        // Sent when updates were missed beyond replay: refetch the page's state.
+        events.addEventListener("resync", () => log("resync: missed updates, refetch"));
+    </script>
+</body>
+
+</html>
