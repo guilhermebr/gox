@@ -20,7 +20,18 @@ updates:
     ignore:
       - dependency-name: "github.com/guilhermebr/gox"
       - dependency-name: "github.com/guilhermebr/gox/*"
+      # templ's runtime must match the CLI that generated the committed
+      # *_templ.go files. Bump it by hand: web/go.mod, scaffold.TemplVersion,
+      # then `make generate` and
+      # `templ generate -path cmd/gox/internal/scaffold/_template/web`.
+      - dependency-name: "github.com/a-h/templ"
+    # Families that release together get their own pull request, so one
+    # breaking update does not hold back the rest.
     groups:
+      opentelemetry:
+        patterns: ["go.opentelemetry.io/*"]
+      aws:
+        patterns: ["github.com/aws/*"]
       go-modules:
         patterns: ["*"]
 
