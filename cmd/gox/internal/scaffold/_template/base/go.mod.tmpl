@@ -1,6 +1,12 @@
 module {{ .Module }}
 
 go {{ .GoVersion }}
+{{- if .Web }}
+
+// The templ runtime must match the CLI that generated the *_templ.go files
+// (TEMPL_VERSION in the Makefile): bump both together and run make generate.
+require github.com/a-h/templ {{ .TemplVersion }}
+{{- end }}
 {{- if .GoxDir }}
 
 // Development: the gox modules come from a local checkout. Remove these
