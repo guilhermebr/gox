@@ -245,3 +245,29 @@ and validate, `web.RenderStatus(..., 422, ...)` to re-render with field
 errors, `web.AddFlash` + `web.Redirect` on success. Sessions are sealed
 cookies with CSRF on; `web.APIFrom(r)` calls the service's own API as the
 signed-in user. `examples/web` is the complete version of this section.
+
+## 10. Push updates to browsers
+
+Server-sent events with topics, for "the order was paid" without polling:
+
+```go
+a := gox.MustNew("shop",
+	postgres.Enable(),
+	gox.HTTP(gox.WithSSE(gox.SSEConfig{Transport: postgres.SSETransport})),
+)
+
+a.SSE().Publish(ctx, gox.SSEUpdate{Topics: []string{"/orders/" + id}, Event: "order.paid", Data: body})
+```
+
+Browsers subscribe with `new EventSource("/events?topic=/orders/42")`; a
+selector is an exact topic, a template (`/orders/{id}`, `/files/{path...}`)
+or `*`. An update with `Private: true` reaches only the subscribers
+`SSEConfig.Authorize(r, topic)` allows. Without a `Transport`, updates stay
+in the process that published them, which is right for one replica.
+
+A reconnecting browser sends `Last-Event-ID` and gets what it missed from
+an in-memory history; when that is gone it gets a `resync` event
+(`gox.SSEResyncEvent`) and should refetch what it shows. Delivery is at most
+once, so treat events as a hint to update, not as the record.
+`docs/recipes/push-server-sent-events.md` is the complete version, with the
+client code; `examples/sse` runs it.

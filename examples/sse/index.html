@@ -33,7 +33,12 @@
             withCredentials: true,
         });
         events.onopen = () => log("connected");
-        events.onerror = () => log("disconnected; the browser reconnects with Last-Event-ID");
+        // The browser reconnects after a dropped connection, but not after an
+        // error response (503 at SSEConfig.MaxSubscribers or on shutdown): a
+        // real page subscribes again itself then, and refetches its state.
+        events.onerror = () => log(events.readyState === EventSource.CLOSED
+            ? "refused; the browser will not retry"
+            : "disconnected; the browser reconnects with Last-Event-ID");
         events.addEventListener("order.paid", (e) => log("order.paid " + e.data));
         events.addEventListener("notice", (e) => log("private notice " + e.data));
         // Sent when updates were missed beyond replay: refetch the page's state.
