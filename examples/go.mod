@@ -2,7 +2,7 @@ module github.com/guilhermebr/gox/examples
 
 go 1.26.0
 
-require github.com/guilhermebr/gox v0.1.0
+require github.com/guilhermebr/gox v0.2.0
 
 require (
 	github.com/ardanlabs/conf/v3 v3.13.0 // indirect

@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/providers/temporal
 go 1.26.0
 
 require (
-	github.com/guilhermebr/gox v0.1.0
+	github.com/guilhermebr/gox v0.2.0
 	go.temporal.io/sdk v1.49.0
 	go.temporal.io/sdk/contrib/opentelemetry v0.8.1
 )

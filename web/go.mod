@@ -2,7 +2,7 @@ module github.com/guilhermebr/gox/web
 
 go 1.26.0
 
-require github.com/guilhermebr/gox v0.0.0
+require github.com/guilhermebr/gox v0.2.0
 
 require (
 	github.com/a-h/templ v0.3.1020
@@ -43,5 +43,3 @@ require (
 	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-replace github.com/guilhermebr/gox => ../

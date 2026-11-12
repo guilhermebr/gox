@@ -46,4 +46,4 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 
-require github.com/guilhermebr/gox v0.1.0
+require github.com/guilhermebr/gox v0.2.0

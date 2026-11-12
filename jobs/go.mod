@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/jobs
 go 1.26.0
 
 require (
-	github.com/guilhermebr/gox v0.1.0
+	github.com/guilhermebr/gox v0.2.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/riverqueue/river v0.47.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.47.0
