@@ -118,6 +118,10 @@ pool closes last on shutdown.
 A server-rendered HTML app on templ is the same shape with `gox/web`; see
 `examples/web`.
 
+To push changes to browsers without polling, `gox.HTTP(gox.WithSSE(...))`
+serves topic-based server-sent events and `a.SSE().Publish` sends them, to
+every replica with `postgres.SSETransport`; see `examples/sse`.
+
 ## The opinions
 
 gox chooses once so you do not. Each choice has an ADR in `docs/decisions/`.
@@ -132,6 +136,7 @@ gox chooses once so you do not. Each choice has an ADR in `docs/decisions/`.
 | an explicit staged lifecycle, no DI container | start order is fixed by stage, readable, and shutdown is the exact reverse (ADR 0002) |
 | pgx plus golang-migrate on a dedicated connection | what every consumer already used, minus the incident that starved a pool under a rolling deploy (ADR 0006) |
 | templ, Alpine.js, HTMX 2, Tailwind standalone CLI, embedded hashed assets | what the existing HTML apps converged on; no Node at build or run time (ADR 0007) |
+| server-sent events with topics, fanned out over Postgres LISTEN/NOTIFY | push over plain HTTP with the auth the service already has, and no broker to run (ADR 0016) |
 | nested modules, one per feature | a consumer's module graph contains only what it imports (ADR 0000) |
 
 ## Escape hatches
@@ -180,7 +185,7 @@ commit.
 - `docs/recipes/`: one complete, build-checked example per task.
 - `AGENTS.md`: for agents working in this repository. Generated services
   get their own `AGENTS.md` and `CLAUDE.md` from the scaffold template.
-- `examples/`: `minimal`, `http`, `postgres`, `web`.
+- `examples/`: `minimal`, `http`, `postgres`, `sse`, `web`.
 
 ## Versioning
 

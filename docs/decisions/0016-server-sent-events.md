@@ -49,7 +49,15 @@ write timeouts close long-lived connections.
 
 - NOTIFY carries about 7.9 KB; bigger updates fail with
   `postgres.ErrSSETooLarge` and should carry an ID or a URL instead.
-- Delivery is at most once, and the replay history is per replica.
+- Delivery is at most once, and the replay history is per replica. Each
+  replica records its own updates when it publishes them and the others'
+  when NOTIFY delivers them, so two replicas publishing at the same moment
+  can remember the pair in different orders; a client that resumes on
+  another replica can then miss or repeat one of them. Events are a hint
+  to update, not the record.
+- A subscription refused with an error status (503 at `MaxSubscribers` or
+  during shutdown, 401 once credentials expire) ends a browser's
+  `EventSource` for good: the page subscribes again itself.
 - LISTEN needs a session: behind a transaction-mode pooler (PgBouncer,
   Supabase's port 6543) it succeeds but nothing arrives. The listener
   probes itself on every connect and logs an error when the probe is lost.

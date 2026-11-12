@@ -25,6 +25,7 @@ static/                       package static (//go:embed css js; var FS) with th
 - **Add a migration**: a new `migrations/NNNN_name.up.sql` (and `.down.sql`); `postgres.WithMigrations(migrations.FS)` runs it at boot.
 - **Add a page** (HTML apps): a templ component in `internal/<feature>/views/` taking typed params, rendered with `web.Render` inside `web/layout`; forms follow decode → 422 re-render → flash + redirect; JSON `POST` routes are not CSRF-checked, form posts are.
 - **Add a background job**: `gox.Periodic("name", interval, fn)` for timers; `gox.Component(c)` for anything with Start/Stop; never a bare goroutine.
+- **Push updates to browsers**: `gox.HTTP(gox.WithSSE(gox.SSEConfig{}))` in `main.go`, then `a.SSE().Publish(ctx, gox.SSEUpdate{Topics: []string{"/orders/" + id}, Event: "order.paid", Data: body})` from a handler; browsers subscribe with `new EventSource("/events?topic=/orders/42")`. With more than one replica set `Transport: postgres.SSETransport`. Never hand-write a streaming handler: other routes buffer and time out.
 - **Add a health check**: implement `Ready(ctx) error` on your component, or `a.Health().AddReadiness("name", fn)`.
 - **Call another service**: `a.HTTPClient()` (declare `gox.HTTPClient()`); in an HTML app call this service's own API with `web.APIFrom(r)`.
 

@@ -59,12 +59,31 @@ func main() {
 ```js path=static/orders.js
 // Every order, or one: ?topic=/orders/42. Templates match one segment
 // ({id}) or the rest of the topic ({path...}); * matches everything.
-const events = new EventSource("/events?topic=" + encodeURIComponent("/orders/{id}"), { withCredentials: true });
-events.addEventListener("order.paid", (e) => console.log(JSON.parse(e.data)));
-// On reconnect the browser sends Last-Event-ID and the hub replays what
-// was missed, as long as it is still in SSEConfig.History; otherwise it
-// sends a "resync" event (gox.SSEResyncEvent) and the page should refetch.
-events.addEventListener("resync", () => location.reload());
+const url = "/events?topic=" + encodeURIComponent("/orders/{id}");
+
+function subscribe() {
+  const events = new EventSource(url, { withCredentials: true });
+  events.addEventListener("order.paid", (e) => console.log(JSON.parse(e.data)));
+  // On reconnect the browser sends Last-Event-ID and the hub replays what
+  // was missed, as long as it is still in SSEConfig.History; otherwise it
+  // sends a "resync" event (gox.SSEResyncEvent) and the page should refetch.
+  events.addEventListener("resync", refetch);
+  // The browser reconnects by itself after a dropped connection, but gives
+  // up for good on an error response: 503 when the service is at
+  // SSEConfig.MaxSubscribers or shutting down, 401 when the session ended.
+  // Subscribe again after a pause; a new EventSource has no Last-Event-ID,
+  // so refetch too.
+  events.onerror = () => {
+    if (events.readyState !== EventSource.CLOSED) return;
+    setTimeout(() => { subscribe(); refetch(); }, 5000);
+  };
+}
+
+// Load again what the page shows: fetch("/orders") and re-render, or simply
+// location.reload().
+function refetch() { /* ... */ }
+
+subscribe();
 ```
 
 `EventSource` cannot send an `Authorization` header: authenticate the
