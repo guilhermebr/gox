@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -15,7 +17,13 @@ func TestCodecRoundTripsAndAuthenticates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(enc, "tok") || strings.Contains(enc, "u1") {
+	// The check is on the sealed bytes: the encoded text is random base64,
+	// which contains a short value such as "u1" by chance now and then.
+	sealed, err := base64.RawURLEncoding.DecodeString(enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte(`"user_id"`)) || bytes.Contains(sealed, []byte(`"token"`)) {
 		t.Fatal("cookie value must be encrypted, not readable")
 	}
 	dec, err := c.decode(enc)
@@ -26,8 +34,8 @@ func TestCodecRoundTripsAndAuthenticates(t *testing.T) {
 		t.Fatalf("decoded = %v", dec)
 	}
 
-	tampered := enc[:len(enc)-2] + "AA"
-	if _, err := c.decode(tampered); err == nil {
+	sealed[len(sealed)-1] ^= 0x01
+	if _, err := c.decode(base64.RawURLEncoding.EncodeToString(sealed)); err == nil {
 		t.Fatal("tampered cookie accepted")
 	}
 	other, _ := newCodec([]byte("fedcba9876543210fedcba9876543210"))
