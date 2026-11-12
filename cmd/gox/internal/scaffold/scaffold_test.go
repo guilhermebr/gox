@@ -128,6 +128,21 @@ func TestGoxDirAddsReplaceDirectives(t *testing.T) {
 	}
 }
 
+// The template ships templ-generated code, which only builds against the
+// templ runtime it was generated with: without the pin, go mod tidy resolves
+// the service's own templ import to the latest release.
+func TestWebPinsTheTemplRuntime(t *testing.T) {
+	want := "require github.com/a-h/templ " + scaffold.TemplVersion + "\n"
+	web := render(t, scaffold.Options{Name: "shop", Module: "example.com/shop", Web: true})
+	if !strings.Contains(web["go.mod"], want) {
+		t.Fatalf("go.mod does not pin templ:\n%s", web["go.mod"])
+	}
+	api := render(t, scaffold.Options{Name: "shop", Module: "example.com/shop"})
+	if strings.Contains(api["go.mod"], "a-h/templ") {
+		t.Fatalf("go.mod of a service without --web mentions templ:\n%s", api["go.mod"])
+	}
+}
+
 // TestGeneratedServiceBuildsTestsAndAnswersHealthz is the zero-edit
 // guarantee: services from gox new must build, pass their own tests, run,
 // and answer /healthz on the admin port without touching a file. The web
