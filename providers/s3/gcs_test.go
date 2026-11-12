@@ -72,7 +72,9 @@ func bucketAgainst(t *testing.T, handler http.Handler, env map[string]string) st
 	}
 	t.Cleanup(func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
 	})
 	return s3.From(a)
 }
