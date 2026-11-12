@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/providers/posthog
 go 1.26.0
 
 require (
-	github.com/guilhermebr/gox v0.1.0
+	github.com/guilhermebr/gox v0.2.0
 	github.com/posthog/posthog-go v1.25.2
 )
 

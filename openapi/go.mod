@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/openapi
 go 1.26.0
 
 require (
-	github.com/guilhermebr/gox v0.1.0
+	github.com/guilhermebr/gox v0.2.0
 	github.com/pb33f/libopenapi v0.38.7
 	github.com/pb33f/libopenapi-validator v0.14.0
 )
