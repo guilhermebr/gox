@@ -10,7 +10,7 @@ define foreach_module
 	@for m in $(MODULES); do echo "==> $$m"; (cd $$m && $(1)) || exit 1; done
 endef
 
-.PHONY: all build test test-integration lint fmt fmt-check vet tidy vulncheck check-deps check-lint-rules generate generate-check llm llm-check check-recipes ci help
+.PHONY: all build test test-integration lint fmt fmt-check vet tidy tidy-check vulncheck check-deps check-lint-rules generate generate-check llm llm-check check-recipes ci help
 
 TEMPL_VERSION := $(shell grep -E 'github.com/a-h/templ ' web/go.mod | awk '{print $$2}')
 TEMPL := go run github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION)
@@ -48,6 +48,10 @@ vet:
 ## tidy: run go mod tidy in every module
 tidy:
 	$(call foreach_module,GOWORK=off go mod tidy)
+
+## tidy-check: fail if any go.mod or go.sum is not tidy
+tidy-check: tidy
+	@git diff --exit-code -- '*go.mod' '*go.sum' || (echo "go.mod or go.sum is not tidy: run make tidy" && exit 1)
 
 ## vulncheck: run govulncheck in every module
 vulncheck:
@@ -89,7 +93,7 @@ check-lint-rules:
 	@scripts/check-lint-rules.sh
 
 ## ci: the full check suite
-ci: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules
+ci: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules tidy-check
 
 ## help: list targets
 help:
