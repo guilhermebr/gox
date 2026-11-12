@@ -15,7 +15,8 @@ cd gox
 
 A `go.work` file ties the modules together for local development, so `go
 build` and `go test` work from any module directory. The `Makefile` targets
-iterate over every module; `make ci` is what CI runs.
+iterate over every module; `make ci` is what CI runs, split into parallel
+jobs, plus the integration tests and `make vulncheck`.
 
 ## Development workflow
 
@@ -37,9 +38,11 @@ make check-deps       # prove a root-only example links no feature dependency
 make check-lint-rules # prove the depguard dependency rules fire
 make vulncheck        # govulncheck
 make tidy             # go mod tidy in every module
+make tidy-check       # fail if any go.mod or go.sum is not tidy
 ```
 
-You'll need Go 1.26+, [`golangci-lint`](https://golangci-lint.run/) v2, and
+You'll need Go 1.26+, [`golangci-lint`](https://golangci-lint.run/) v2 (CI pins
+the version in `.github/workflows/ci.yml`; an older or newer one can disagree), and
 [`govulncheck`](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) for the
 corresponding targets.
 

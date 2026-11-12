@@ -1,0 +1,33 @@
+# One grouped pull request a week per ecosystem. The gox modules themselves
+# are excluded: a module moves to a new root version as a release step
+# (AGENTS.md, "Releasing a module"), not as a dependency bump.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - /
+      - /examples
+      - /jobs
+      - /jwt
+      - /monetary
+      - /openapi
+      - /osrelease
+      - /postgres
+      - /providers/*
+      - /web
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "github.com/guilhermebr/gox"
+      - dependency-name: "github.com/guilhermebr/gox/*"
+    groups:
+      go-modules:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

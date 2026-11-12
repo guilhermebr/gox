@@ -5,32 +5,74 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Nightly: an upstream release can break main without a commit here (the
+  # services `gox new` generates resolve their dependencies when they build).
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to a pull request supersedes the run in progress; runs on main
+# always finish, so every commit there has a result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   GO_VERSION: "1.26.x"
-  GOLANGCI_LINT_VERSION: v2.11.4
+  GOLANGCI_LINT_VERSION: v2.15.0
 
+# The jobs below are `make ci` split by stage so they run in parallel and a
+# failure names its stage. Keep them in step with the Makefile's ci target.
 jobs:
-  ci:
-    name: make ci
+  lint:
+    name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache-dependency-path: "**/go.sum"
 
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           install-only: true
 
-      - run: make ci
+      - run: make fmt-check vet lint check-lint-rules
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: "**/go.sum"
+
+      - run: make test
+
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: "**/go.sum"
+
+      - run: make generate-check llm-check check-recipes check-deps tidy-check
 
   integration:
     name: integration (postgres)
@@ -51,11 +93,28 @@ jobs:
     env:
       DATABASE_URL: postgres://gox:gox@localhost:5432/gox_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache-dependency-path: "**/go.sum"
 
       - run: make test-integration
+
+  vulncheck:
+    name: vulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: "**/go.sum"
+
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - run: make vulncheck

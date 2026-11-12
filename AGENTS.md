@@ -36,13 +36,15 @@ docs/recipes/                      copy-pasteable tasks (build-checked)
 ## How to run checks
 
 ```
-make ci              # everything CI runs: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules
+make ci              # everything CI runs on every PR except integration and vulncheck: fmt-check vet lint test generate-check llm-check check-recipes check-deps check-lint-rules tidy-check
 make test            # race tests, every module
 make test-integration# needs DATABASE_URL pointing at a throwaway postgres database the tests own; CI provides one
 make lint            # golangci-lint v2 with the shared .golangci.yml
 make fmt             # gofumpt + goimports
 make generate        # templ generate for examples/web (CLI pinned to web/go.mod)
 make llm             # regenerate llm.txt after any public API or config change
+make tidy            # go mod tidy in every module; CI fails when a go.mod or go.sum is not tidy
+make vulncheck       # govulncheck in every module; CI runs it on every PR and nightly
 ```
 
 The scaffold template lives in `cmd/gox/internal/scaffold/_template/{base,postgres,web}`
