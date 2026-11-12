@@ -76,7 +76,9 @@ func TestEnableBuildsClientAndReadinessProbesAuthHealth(t *testing.T) {
 	}
 	defer func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
 	}()
 
 	if rep := a.Health().Ready(context.Background()); rep.Checks["supabase"].Status != "ok" {

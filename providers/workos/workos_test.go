@@ -231,7 +231,9 @@ func start(t *testing.T, f *fake, register func(a *gox.App), opts ...workos.Opti
 	}
 	t.Cleanup(func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
 	})
 	return "http://" + addr
 }

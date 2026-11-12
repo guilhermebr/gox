@@ -90,7 +90,9 @@ func start(t *testing.T, opts ...gox.Option) string {
 	}
 	t.Cleanup(func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
 	})
 	return "http://" + addr
 }

@@ -164,7 +164,10 @@ func TestServerStopHardClosesWhenDrainExceedsDeadline(t *testing.T) {
 		t.Fatal("Stop should report that the drain exceeded its deadline")
 	}
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run after the hard close: %v", err)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after the hard close")
 	}

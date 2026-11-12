@@ -260,7 +260,9 @@ func TestEnableWithAuthProtectsEveryRouteButHealth(t *testing.T) {
 	}
 	defer func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
 	}()
 
 	resp, _ := http.Get("http://" + addr + "/me")

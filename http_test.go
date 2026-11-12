@@ -209,7 +209,9 @@ func TestHTTPAccessLogCarriesRequestID(t *testing.T) {
 	waitFor(t, func() bool { return a.Health().IsReady() })
 	do(t, http.MethodGet, "http://"+addr+"/ping", nil, "X-Request-ID", "trace-me")
 	cancel()
-	<-done
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 
 	if !strings.Contains(buf.String(), `"request_id":"trace-me"`) || !strings.Contains(buf.String(), `"route":"GET /ping"`) {
 		t.Fatalf("access log missing request id or route:\n%s", buf.String())
@@ -281,7 +283,9 @@ func TestAdminMetricsExposeHTTPServerDuration(t *testing.T) {
 	waitFor(t, func() bool { return a.Health().IsReady() })
 	defer func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
 	}()
 
 	do(t, http.MethodGet, "http://"+httpAddr+"/x", nil)
