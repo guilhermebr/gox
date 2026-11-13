@@ -33,13 +33,12 @@ const (
 	maxKeySetBytes = 1 << 20
 )
 
-// keyProbe tells a token the SDK refused as invalid_jwt because the SDK had no
-// signing key for it apart from a token that is really invalid. The SDK
-// reports both the same way and returns no error. It drops its cached keys
-// five minutes after the last successful fetch, and after a failed fetch (a
-// WorkOS outage, a network blip, a request cancelled mid-fetch) it refuses
-// every token for 30 seconds. Without the probe each of those would clear the
-// session cookie of every user who reaches the service.
+// keyProbe tells a token the SDK refused because the SDK had no signing key
+// for it apart from a token that is really invalid. The SDK drops its cached
+// keys five minutes after the last successful fetch, and after a failed fetch
+// (a WorkOS outage, a network blip, a request cancelled mid-fetch) it refuses
+// every token for 30 seconds, as reasonKeysUnavailable. Clearing the cookie
+// on such a refusal would sign out every user who reaches the service.
 //
 // The probe repeats the SDK's checks against a key set it fetches itself: a
 // token that passes all of them could only have been refused for want of a
@@ -81,7 +80,7 @@ const (
 	tokenRejected                // the token fails a check the SDK makes: its refusal stands
 )
 
-// check decides about a token the SDK refused as invalid_jwt. fetched is true
+// check decides about a token keysMayBeAtFault let through. fetched is true
 // for exactly one caller per key set fetch, so callers can log an outage once
 // per fetch rather than once per request.
 func (p *keyProbe) check(ctx context.Context, accessToken string) (verdict, bool) {
@@ -264,13 +263,19 @@ func (p *keyProbe) fetch(ctx context.Context) map[string]*rsa.PublicKey {
 	return keys
 }
 
+// reasonKeysUnavailable is the SDK's reason for a token it did not judge
+// because it could not get the signing keys (sdk.ErrSigningKeyUnavailable).
+const reasonKeysUnavailable = "jwks_unavailable"
+
 // keysMayBeAtFault reports whether a token the SDK refused could have been
-// refused only because the SDK had no key for it: invalid_jwt for a token
-// naming the trusted issuer. Expiry says nothing here: the SDK checks the
-// signature before expiry, so without keys an expired token is refused as
-// invalid_jwt too, and is refreshed normally once the keys are back.
+// refused only because the SDK had no key for it: the SDK said so itself
+// (reasonKeysUnavailable), or it answered invalid_jwt, which is also what a
+// fetched key set without the token's key gives. Either way the token must
+// name the trusted issuer. Expiry says nothing here: the SDK checks the
+// signature before expiry, so without keys an expired token is refused too,
+// and is refreshed normally once the keys are back.
 func keysMayBeAtFault(reason, trusted, accessToken string) bool {
-	if reason != "invalid_jwt" {
+	if reason != "invalid_jwt" && reason != reasonKeysUnavailable {
 		return false
 	}
 	return strings.TrimRight(peekClaims(accessToken).Iss, "/") == strings.TrimRight(trusted, "/")

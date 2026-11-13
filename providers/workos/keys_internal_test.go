@@ -198,6 +198,8 @@ func TestKeysMayBeAtFault(t *testing.T) {
 	}{
 		{"trusted issuer", "invalid_jwt", tok("https://idp.test"), true},
 		{"another issuer", "invalid_jwt", tok("https://other.test/"), false},
+		{"keys unavailable", reasonKeysUnavailable, tok("https://idp.test"), true},
+		{"keys unavailable for another issuer", reasonKeysUnavailable, tok("https://other.test/"), false},
 		{"another reason", "session_expired", tok("https://idp.test/"), false},
 	}
 	for _, c := range cases {
