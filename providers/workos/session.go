@@ -115,9 +115,9 @@ func (f *feature) resolve(w http.ResponseWriter, r *http.Request, sealed string)
 	}
 	if err != nil {
 		// The session could not be checked at all (sealing it for the SDK
-		// failed): keep the cookie for the next request. The SDK reports an
-		// unreachable JWKS as invalid_jwt, not as an error; keysMayBeAtFault
-		// and the key probe below handle that case.
+		// failed): keep the cookie for the next request. An unreachable JWKS
+		// is not an error here: authenticate returns it as a refusal, which
+		// keysMayBeAtFault and the key probe below handle.
 		f.log.WarnContext(ctx, "workos session check failed", "error", err)
 		return nil, nil
 	}
@@ -160,7 +160,8 @@ func (f *feature) resolve(w http.ResponseWriter, r *http.Request, sealed string)
 // authenticate lets the SDK verify the access token (signature against the
 // cached JWKS, issuer, audience, expiry). A nil error means res is set; a
 // token that fails verification is a result with Authenticated false and a
-// Reason, not an error.
+// Reason, not an error. Neither is a token the SDK could not judge because
+// it had no signing key: that is a refusal with reasonKeysUnavailable.
 func (f *feature) authenticate(ctx context.Context, data *sdk.SessionData) (*sdk.AuthenticateSessionResult, error) {
 	sealed, err := sdk.SealSession(data, f.sdkPassword())
 	if err != nil {
@@ -170,6 +171,9 @@ func (f *feature) authenticate(ctx context.Context, data *sdk.SessionData) (*sdk
 	// refuses every token for 30s if it fails, so a client that disconnects
 	// mid-fetch must not cancel it. The SDK bounds the fetch at 5s.
 	res, err := sdk.NewSession(f.client, sealed, f.sdkPassword(), sdk.WithSessionIssuer(f.issuer)).AuthenticateContext(context.WithoutCancel(ctx))
+	if errors.Is(err, sdk.ErrSigningKeyUnavailable) {
+		return &sdk.AuthenticateSessionResult{Reason: reasonKeysUnavailable}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
