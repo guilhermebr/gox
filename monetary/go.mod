@@ -1,3 +1,3 @@
 module github.com/guilhermebr/gox/monetary
 
-go 1.26
+go 1.26.0
