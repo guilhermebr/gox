@@ -93,7 +93,7 @@ root version that is not fetchable yet:
 
 Released so far: root and `postgres` at `v0.2.0`; `web` at `v0.1.0`; `jwt`,
 `jobs`, `openapi`, `providers/temporal`, `providers/posthog` at `v0.1.1`;
-`providers/s3` at `v0.1.2`; `providers/workos` at `v0.1.3`. All of them
+`providers/s3` at `v0.1.2`; `providers/workos` at `v0.1.4`. All of them
 require root `v0.2.0`. `providers/resend` requires root `v0.2.0` and is tagged with
 its first release. The rest (`providers/mailgun`, `providers/stripe`,
 `providers/supabase`) still carry `v0.0.0` and a local `replace`; they are
