@@ -1,5 +1,5 @@
 // Package mail is the provider-neutral side of sending email: the Message
-// every mail provider accepts (providers/mailgun), a Sender interface, an
+// every mail provider accepts (providers/mailgun, providers/resend), a Sender interface, an
 // SMTP sender for development and self-hosted relays, a guard that keeps a
 // staging environment from mailing real people, and a recorder for tests.
 package mail

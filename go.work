@@ -11,6 +11,7 @@ use (
 	./postgres
 	./providers/mailgun
 	./providers/posthog
+	./providers/resend
 	./providers/s3
 	./providers/stripe
 	./providers/supabase

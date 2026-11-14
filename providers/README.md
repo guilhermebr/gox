@@ -10,6 +10,7 @@ its own SDK; never another feature or provider.
 |---|---|
 | `github.com/guilhermebr/gox/providers/mailgun` | Mailgun: a `mail.Sender` through the API, verified delivery webhooks and inbound routes |
 | `github.com/guilhermebr/gox/providers/posthog` | PostHog: analytics and feature flags, queue flushed on shutdown |
+| `github.com/guilhermebr/gox/providers/resend` | Resend: a `mail.Sender` through the API with retries on network errors, 5xx and 429, and an idempotency key |
 | `github.com/guilhermebr/gox/providers/s3` | object storage on S3 and compatible servers (MinIO, R2): a `storage.Bucket` with presigned direct uploads |
 | `github.com/guilhermebr/gox/providers/stripe` | Stripe: the API client and verified webhooks |
 | `github.com/guilhermebr/gox/providers/supabase` | the Supabase client |
