@@ -22,13 +22,15 @@ write timeouts close long-lived connections.
   the service publishes `SSEUpdate`s from Go. Private updates reach only
   the subscribers `SSEConfig.Authorize(r, topic)` allows, so the service's
   existing auth decides.
-- The middleware changes only for the SSE route, and only when SSE is
-  enabled. With `WithSSE`, `middleware.StreamCapture` joins the chain and
-  marks requests for the SSE route; `Timeout` lets marked requests through,
-  and the route lifts the server's read and write deadlines for its
-  connection, setting a per-write deadline of its own so a stalled client
-  is dropped. Without `WithSSE` the chain is unchanged, and with it every
-  other route keeps its timeouts.
+- The middleware changes only for streaming routes. `middleware.StreamCapture`
+  marks requests for a route registered with `middleware.Streaming` (the SSE
+  route, or one the service adds, such as a proxy to another service's
+  stream); `Timeout` lets marked requests through, and the route lifts the
+  server's read and write deadlines for its connection; the SSE route sets
+  a per-write deadline of its own so a stalled client is dropped. Every
+  other route keeps its timeouts. (Amended 2026-11-16: `StreamCapture` was
+  first added to the chain only with `WithSSE`, which left a `Streaming`
+  route in a service without a hub buffered and cut by `Timeout`.)
 - Delivery never blocks a publisher: a subscriber that falls behind is
   disconnected and resumes with `Last-Event-ID` from an in-memory history.
   When what it missed is gone (the ID left the history, or the transport

@@ -42,7 +42,7 @@ type (
 // default middleware chain, /healthz and /readyz on the public port, and
 // 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
 //
-// Chain: error renderers → route capture → stream capture (WithSSE) → recovery → request id → client ip → tracing → metrics →
+// Chain: error renderers → route capture → stream capture → recovery → request id → client ip → tracing → metrics →
 // logging → timeout → max bytes → security headers → CORS (WithCORS) →
 // cross-origin protection → feature middleware (Builder.Middleware) → auth (WithAuth) →
 // WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
@@ -76,15 +76,17 @@ func HTTP(opts ...HTTPOption) Option {
 					_, pattern := mux.Handler(r)
 					return pattern
 				}),
-			}
-			if hub, ok := Value[*SSEHub](a, sseKey{}); ok {
-				// Only the SSE route is exempt from the request timeout and
-				// the server's read and write deadlines.
-				mux.Handle("GET "+hub.Path(), middleware.Streaming(hub))
-				chain = append(chain, middleware.StreamCapture(func(r *http.Request) http.Handler {
+				// Any route registered with middleware.Streaming (the SSE hub's,
+				// or one the app adds, such as a proxy to another service's
+				// stream) is exempt from the request timeout and the server's
+				// read and write deadlines; every other route keeps them.
+				middleware.StreamCapture(func(r *http.Request) http.Handler {
 					h, _ := mux.Handler(r)
 					return h
-				}))
+				}),
+			}
+			if hub, ok := Value[*SSEHub](a, sseKey{}); ok {
+				mux.Handle("GET "+hub.Path(), middleware.Streaming(hub))
 			}
 			chain = append(chain,
 				middleware.Recovery(a.log),

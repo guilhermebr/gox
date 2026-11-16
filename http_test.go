@@ -13,6 +13,7 @@ import (
 
 	"github.com/guilhermebr/gox"
 	"github.com/guilhermebr/gox/pkg/log"
+	"github.com/guilhermebr/gox/pkg/middleware"
 )
 
 // runHTTP builds an app with gox.HTTP() on a free port, wires routes with
@@ -188,6 +189,61 @@ func TestHTTPRequestTimeoutFromConfig(t *testing.T) {
 	resp, body := do(t, http.MethodGet, base+"/slow", nil)
 	if resp.StatusCode != http.StatusGatewayTimeout || !strings.Contains(string(body), "deadline_exceeded") {
 		t.Fatalf("slow = %d %s", resp.StatusCode, body)
+	}
+}
+
+// A Streaming route outlives the request and write timeouts and flushes as it
+// writes, in an app with no SSE hub of its own (a proxy to another service's
+// stream).
+func TestHTTPStreamingRouteOutlivesTheTimeoutsWithoutWithSSE(t *testing.T) {
+	t.Setenv("BILLING_HTTP_REQUEST_TIMEOUT", "100ms")
+	t.Setenv("BILLING_HTTP_WRITE_TIMEOUT", "100ms")
+	base, stop := runHTTP(t, func(a *gox.App) {
+		a.Mux().Handle("GET /stream", middleware.Streaming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rc := http.NewResponseController(w)
+			for _, line := range []string{"data: 0\n\n", "data: 1\n\n"} {
+				if _, err := io.WriteString(w, line); err != nil {
+					return
+				}
+				if err := rc.Flush(); err != nil {
+					t.Errorf("flush: %v", err)
+					return
+				}
+				select {
+				case <-r.Context().Done():
+					return
+				case <-time.After(250 * time.Millisecond): // past both timeouts
+				}
+			}
+		})))
+	}, nil)
+	defer stop()
+
+	resp, err := http.Get(base + "/stream")
+	if err != nil {
+		t.Fatalf("GET /stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream = %d, want 200", resp.StatusCode)
+	}
+	first := make(chan string, 1)
+	go func() {
+		buf := make([]byte, len("data: 0\n\n"))
+		n, _ := io.ReadFull(resp.Body, buf)
+		first <- string(buf[:n])
+	}()
+	select {
+	case got := <-first:
+		if got != "data: 0\n\n" {
+			t.Fatalf("first event = %q", got)
+		}
+	case <-time.After(80 * time.Millisecond):
+		t.Fatal("the first event was held back: the stream is buffered")
+	}
+	rest, err := io.ReadAll(resp.Body)
+	if err != nil || string(rest) != "data: 1\n\n" {
+		t.Fatalf("rest = %q %v: the stream ended early (buffered, or cut by a timeout)", rest, err)
 	}
 }
 
