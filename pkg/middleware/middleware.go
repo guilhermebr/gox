@@ -174,8 +174,8 @@ func SecurityHeaders() Middleware {
 
 // Timeout bounds a request: the handler's context is canceled and the
 // client gets a 504 envelope when d elapses. The response is buffered until
-// the handler returns, so requests StreamCapture marked as streaming (SSE,
-// long polls) pass through untouched, with no deadline.
+// the handler returns, so requests RouteCapture resolved to a Streaming route
+// (SSE, long polls, stream proxies) pass through untouched, with no deadline.
 func Timeout(d time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

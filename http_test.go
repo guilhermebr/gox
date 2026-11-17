@@ -192,27 +192,30 @@ func TestHTTPRequestTimeoutFromConfig(t *testing.T) {
 	}
 }
 
-// A Streaming route outlives the request and write timeouts and flushes as it
-// writes, in an app with no SSE hub of its own (a proxy to another service's
-// stream).
+// A Streaming route outlives the request, read and write timeouts and
+// flushes as it writes, in an app with no SSE hub of its own (a proxy to
+// another service's stream).
 func TestHTTPStreamingRouteOutlivesTheTimeoutsWithoutWithSSE(t *testing.T) {
-	t.Setenv("BILLING_HTTP_REQUEST_TIMEOUT", "100ms")
-	t.Setenv("BILLING_HTTP_WRITE_TIMEOUT", "100ms")
+	t.Setenv("BILLING_HTTP_REQUEST_TIMEOUT", "200ms")
+	t.Setenv("BILLING_HTTP_READ_TIMEOUT", "200ms")
+	t.Setenv("BILLING_HTTP_WRITE_TIMEOUT", "200ms")
 	base, stop := runHTTP(t, func(a *gox.App) {
 		a.Mux().Handle("GET /stream", middleware.Streaming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rc := http.NewResponseController(w)
-			for _, line := range []string{"data: 0\n\n", "data: 1\n\n"} {
+			for i, line := range []string{"data: 0\n\n", "data: 1\n\n"} {
+				if i > 0 {
+					select {
+					case <-r.Context().Done(): // a read timeout cancels it
+						return
+					case <-time.After(2 * time.Second): // well past every timeout and the reader's wait
+					}
+				}
 				if _, err := io.WriteString(w, line); err != nil {
 					return
 				}
 				if err := rc.Flush(); err != nil {
 					t.Errorf("flush: %v", err)
 					return
-				}
-				select {
-				case <-r.Context().Done():
-					return
-				case <-time.After(250 * time.Millisecond): // past both timeouts
 				}
 			}
 		})))
@@ -238,12 +241,89 @@ func TestHTTPStreamingRouteOutlivesTheTimeoutsWithoutWithSSE(t *testing.T) {
 		if got != "data: 0\n\n" {
 			t.Fatalf("first event = %q", got)
 		}
-	case <-time.After(80 * time.Millisecond):
+	case <-time.After(time.Second): // a buffered stream holds it for 2s
 		t.Fatal("the first event was held back: the stream is buffered")
 	}
 	rest, err := io.ReadAll(resp.Body)
 	if err != nil || string(rest) != "data: 1\n\n" {
 		t.Fatalf("rest = %q %v: the stream ended early (buffered, or cut by a timeout)", rest, err)
+	}
+}
+
+// HTTP_READ_TIMEOUT still bounds the request body of a Streaming route, so a
+// client cannot hold one open by trickling its body.
+func TestHTTPStreamingRouteKeepsTheReadTimeoutForItsBody(t *testing.T) {
+	t.Setenv("BILLING_HTTP_READ_TIMEOUT", "200ms")
+	readErr := make(chan error, 1)
+	base, stop := runHTTP(t, func(a *gox.App) {
+		a.Mux().Handle("POST /upload", middleware.Streaming(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			_, err := io.ReadAll(r.Body)
+			readErr <- err
+		})))
+	}, nil)
+	defer stop()
+
+	body, trickle := io.Pipe()
+	go func() {
+		_, _ = io.WriteString(trickle, "part")
+		time.Sleep(time.Second) // well past the read timeout
+		_, _ = io.WriteString(trickle, "rest")
+		_ = trickle.Close()
+	}()
+	resp, err := http.Post(base+"/upload", "text/plain", body)
+	if err == nil {
+		_ = resp.Body.Close()
+	}
+	select {
+	case err := <-readErr:
+		if err == nil {
+			t.Fatal("a body trickled past HTTP_READ_TIMEOUT was read in full")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler never finished reading the body")
+	}
+}
+
+// An app's Streaming route gets its context canceled when shutdown begins,
+// so an open stream does not hold Stop for the whole grace period.
+func TestHTTPShutdownEndsStreamingRoutes(t *testing.T) {
+	setArgs(t)
+	t.Setenv("BILLING_SHUTDOWN_TIMEOUT", "1s")
+	addr := freeAddr(t)
+	t.Setenv("BILLING_HTTP_ADDR", addr)
+	a, err := gox.New("billing", base(gox.HTTP())...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Mux().Handle("GET /stream", middleware.Streaming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "data: 0\n\n")
+		_ = http.NewResponseController(w).Flush()
+		<-r.Context().Done()
+	})))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.RunContext(ctx) }()
+	waitFor(t, func() bool { return a.Health().IsReady() })
+
+	resp, err := http.Get("http://" + addr + "/stream")
+	if err != nil {
+		t.Fatalf("GET /stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if _, err := io.ReadFull(resp.Body, make([]byte, len("data: 0\n\n"))); err != nil {
+		t.Fatalf("first event: %v", err)
+	}
+
+	began := time.Now()
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("RunContext = %v; an open stream must not fail the shutdown", err)
+	}
+	if d := time.Since(began); d > 2*time.Second {
+		t.Fatalf("shutdown took %v; open streams must not hold the server", d)
+	}
+	if rest, err := io.ReadAll(resp.Body); err != nil || len(rest) != 0 {
+		t.Fatalf("after shutdown: %q %v, want a clean end of stream", rest, err)
 	}
 }
 

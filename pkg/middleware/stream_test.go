@@ -1,19 +1,24 @@
 package middleware_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/guilhermebr/gox/pkg/middleware"
 )
 
-func TestStreamCaptureLetsAStreamingRouteOutliveTheTimeout(t *testing.T) {
+func TestRouteCaptureLetsAStreamingRouteOutliveTheTimeout(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.Handle("GET /stream", middleware.Streaming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !middleware.IsStreaming(r) {
 			t.Error("IsStreaming = false inside a Streaming route")
+		}
+		if got := middleware.Route(r); got != "GET /stream" {
+			t.Errorf("Route = %q", got)
 		}
 		time.Sleep(50 * time.Millisecond)
 		if r.Context().Err() != nil {
@@ -28,8 +33,7 @@ func TestStreamCaptureLetsAStreamingRouteOutliveTheTimeout(t *testing.T) {
 		}
 		<-r.Context().Done()
 	})
-	resolve := func(r *http.Request) http.Handler { h, _ := mux.Handler(r); return h }
-	h := middleware.Chain(middleware.StreamCapture(resolve), middleware.Timeout(10*time.Millisecond))(mux)
+	h := middleware.Chain(middleware.RouteCapture(mux.Handler), middleware.Timeout(10*time.Millisecond))(mux)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/stream", nil))
@@ -44,10 +48,41 @@ func TestStreamCaptureLetsAStreamingRouteOutliveTheTimeout(t *testing.T) {
 	}
 }
 
-func TestStreamingIsInvisibleWithoutStreamCapture(t *testing.T) {
+// A Streaming marker hidden behind another handler would be buffered and cut
+// by Timeout; it fails loudly with the fix instead.
+func TestStreamingInsideAnotherHandlerPanicsWithTheFix(t *testing.T) {
+	stream := middleware.Streaming(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("never"))
+	}))
+	requireRole := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.ServeHTTP(w, r) })
+	}
+	sub := http.NewServeMux()
+	sub.Handle("GET /sub/stream", stream)
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /wrapped", requireRole(stream))
+	mux.Handle("GET /prefixed/", http.StripPrefix("/prefixed", stream))
+	mux.Handle("/sub/", sub)
+	h := middleware.RouteCapture(mux.Handler)(mux)
+
+	for _, path := range []string{"/wrapped", "/prefixed/x", "/sub/stream"} {
+		func() {
+			defer func() {
+				msg := fmt.Sprint(recover())
+				if !strings.Contains(msg, "register middleware.Streaming(h) on the app's mux itself") {
+					t.Errorf("%s: panic = %q, want one naming the fix", path, msg)
+				}
+			}()
+			h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+		}()
+	}
+}
+
+func TestStreamingWorksWithoutRouteCapture(t *testing.T) {
 	h := middleware.Streaming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if middleware.IsStreaming(r) {
-			t.Error("IsStreaming = true without StreamCapture")
+			t.Error("IsStreaming = true without RouteCapture")
 		}
 		_, _ = w.Write([]byte("ok"))
 	}))

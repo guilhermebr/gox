@@ -1,6 +1,7 @@
 package gox
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -41,8 +42,11 @@ type (
 // HTTP declares the public HTTP server: a net/http ServeMux behind the
 // default middleware chain, /healthz and /readyz on the public port, and
 // 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
+// A route registered with middleware.Streaming is exempt from the request
+// timeout and the server's write deadline, and its request context is
+// canceled when shutdown begins, so the server can drain.
 //
-// Chain: error renderers → route capture → stream capture → recovery → request id → client ip → tracing → metrics →
+// Chain: error renderers → route capture → stream shutdown → recovery → request id → client ip → tracing → metrics →
 // logging → timeout → max bytes → security headers → CORS (WithCORS) →
 // cross-origin protection → feature middleware (Builder.Middleware) → auth (WithAuth) →
 // WithMiddleware → mux. Timeouts and the body limit come from HTTP_* config.
@@ -59,6 +63,8 @@ func HTTP(opts ...HTTPOption) Option {
 		if o.sse != nil {
 			b.Component(StageUser, func(a *App) (lifecycle.Component, error) { return newSSE(a, b, *o.sse) })
 		}
+		streams := newStreamShutdown()
+		b.Component(StageServer, func(*App) (lifecycle.Component, error) { return streams, nil })
 		b.Component(StageServer, func(a *App) (lifecycle.Component, error) {
 			cfg := a.cfg.HTTP
 			metrics, err := middleware.Metrics(a.otel.Meter)
@@ -72,18 +78,14 @@ func HTTP(opts ...HTTPOption) Option {
 			mux := httpserver.NewMux()
 			chain := []Middleware{
 				withErrorRenderers(append(b.renderers[:len(b.renderers):len(b.renderers)], b.appRenderers...)),
-				middleware.RouteCapture(func(r *http.Request) string {
-					_, pattern := mux.Handler(r)
-					return pattern
-				}),
-				// Any route registered with middleware.Streaming (the SSE hub's,
-				// or one the app adds, such as a proxy to another service's
-				// stream) is exempt from the request timeout and the server's
-				// read and write deadlines; every other route keeps them.
-				middleware.StreamCapture(func(r *http.Request) http.Handler {
-					h, _ := mux.Handler(r)
-					return h
-				}),
+				// One lookup gives the pattern for logs and metrics and whether
+				// the route was registered with middleware.Streaming (the SSE
+				// hub's, or one the app adds, such as a proxy to another
+				// service's stream): those are exempt from the request timeout
+				// and the server's write deadline, and end when shutdown
+				// begins; every other route keeps its timeouts.
+				middleware.RouteCapture(mux.Handler),
+				streams.middleware(),
 			}
 			if hub, ok := Value[*SSEHub](a, sseKey{}); ok {
 				mux.Handle("GET "+hub.Path(), middleware.Streaming(hub))
@@ -290,4 +292,50 @@ func (a *App) HandleFunc(pattern string, h http.HandlerFunc) {
 // HTTPClient() was not declared.
 func (a *App) HTTPClient() *http.Client {
 	return MustValue[*http.Client](a, httpClientKey{}, "a.HTTPClient", "gox.HTTPClient()")
+}
+
+// streamShutdown cancels the requests of Streaming routes when shutdown
+// begins. http.Server.Shutdown does not cancel request contexts, so an open
+// stream would otherwise hold Stop for the whole grace period and fail it.
+// It is a Runner: runners are canceled before any component stops, so
+// streams end before the server drains.
+type streamShutdown struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func newStreamShutdown() *streamShutdown {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &streamShutdown{ctx: ctx, cancel: cancel}
+}
+
+func (s *streamShutdown) Name() string                { return "http-streams" }
+func (s *streamShutdown) Start(context.Context) error { return nil }
+
+func (s *streamShutdown) Stop(context.Context) error {
+	s.cancel()
+	return nil
+}
+
+func (s *streamShutdown) Run(ctx context.Context) error {
+	<-ctx.Done()
+	s.cancel()
+	return nil
+}
+
+// middleware ties each Streaming request's context to the shutdown signal;
+// other requests pass through untouched.
+func (s *streamShutdown) middleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !middleware.IsStreaming(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx, cancel := context.WithCancel(r.Context())
+			defer cancel()
+			defer context.AfterFunc(s.ctx, cancel)()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

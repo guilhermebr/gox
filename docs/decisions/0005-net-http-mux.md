@@ -34,7 +34,9 @@ better than any router.
   metrics and span names read the pattern from there.
 - Timeout is real cancellation: the response is buffered and the handler's
   context is canceled at the deadline; the client gets a 504 envelope.
-  Streaming handlers must not sit under it.
+  Routes registered with `middleware.Streaming` pass through it untouched:
+  `RouteCapture` resolves the route's handler in the same lookup and flags
+  them (see ADR 0016).
 
 ## Dependencies added
 
