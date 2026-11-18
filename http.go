@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/guilhermebr/gox/pkg/config"
 	"github.com/guilhermebr/gox/pkg/httpclient"
@@ -43,8 +45,9 @@ type (
 // default middleware chain, /healthz and /readyz on the public port, and
 // 404/405 rendered as the error envelope. It enables a.Mux and a.HandleFunc.
 // A route registered with middleware.Streaming is exempt from the request
-// timeout and the server's write deadline, and its request context is
-// canceled when shutdown begins, so the server can drain.
+// timeout and the server's write deadline, and when shutdown begins its
+// request context is canceled and a write to a stalled client fails, so the
+// server can drain.
 //
 // Chain: error renderers → route capture → stream shutdown → recovery → request id → client ip → tracing → metrics →
 // logging → timeout → max bytes → security headers → CORS (WithCORS) →
@@ -63,8 +66,6 @@ func HTTP(opts ...HTTPOption) Option {
 		if o.sse != nil {
 			b.Component(StageUser, func(a *App) (lifecycle.Component, error) { return newSSE(a, b, *o.sse) })
 		}
-		streams := newStreamShutdown()
-		b.Component(StageServer, func(*App) (lifecycle.Component, error) { return streams, nil })
 		b.Component(StageServer, func(a *App) (lifecycle.Component, error) {
 			cfg := a.cfg.HTTP
 			metrics, err := middleware.Metrics(a.otel.Meter)
@@ -76,6 +77,7 @@ func HTTP(opts ...HTTPOption) Option {
 				return nil, fmt.Errorf("%s: %w", config.EnvName(a.prefix, "HTTP_TRUSTED_PROXIES"), err)
 			}
 			mux := httpserver.NewMux()
+			endStreams, beginShutdown := endStreamsOnShutdown()
 			chain := []Middleware{
 				withErrorRenderers(append(b.renderers[:len(b.renderers):len(b.renderers)], b.appRenderers...)),
 				// One lookup gives the pattern for logs and metrics and whether
@@ -85,7 +87,7 @@ func HTTP(opts ...HTTPOption) Option {
 				// and the server's write deadline, and end when shutdown
 				// begins; every other route keeps its timeouts.
 				middleware.RouteCapture(mux.Handler),
-				streams.middleware(),
+				endStreams,
 			}
 			if hub, ok := Value[*SSEHub](a, sseKey{}); ok {
 				mux.Handle("GET "+hub.Path(), middleware.Streaming(hub))
@@ -133,7 +135,7 @@ func HTTP(opts ...HTTPOption) Option {
 				ReadTimeout:       cfg.ReadTimeout,
 				WriteTimeout:      cfg.WriteTimeout,
 				IdleTimeout:       cfg.IdleTimeout,
-			}, handler, httpserver.WithLogger(a.log))
+			}, handler, httpserver.WithLogger(a.log), httpserver.WithOnShutdown(beginShutdown))
 			b.Set(muxKey{}, mux)
 			return srv, nil
 		})
@@ -294,38 +296,20 @@ func (a *App) HTTPClient() *http.Client {
 	return MustValue[*http.Client](a, httpClientKey{}, "a.HTTPClient", "gox.HTTPClient()")
 }
 
-// streamShutdown cancels the requests of Streaming routes when shutdown
+// streamDrain is how long a Streaming route may keep writing once shutdown
+// has begun: enough to end the response cleanly for a client that is
+// reading, short enough that one that is not cannot hold the drain.
+const streamDrain = time.Second
+
+// endStreamsOnShutdown returns a middleware that ends the requests of
+// Streaming routes once begin is called, which the server does as its Stop
 // begins. http.Server.Shutdown does not cancel request contexts, so an open
 // stream would otherwise hold Stop for the whole grace period and fail it.
-// It is a Runner: runners are canceled before any component stops, so
-// streams end before the server drains.
-type streamShutdown struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-}
-
-func newStreamShutdown() *streamShutdown {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &streamShutdown{ctx: ctx, cancel: cancel}
-}
-
-func (s *streamShutdown) Name() string                { return "http-streams" }
-func (s *streamShutdown) Start(context.Context) error { return nil }
-
-func (s *streamShutdown) Stop(context.Context) error {
-	s.cancel()
-	return nil
-}
-
-func (s *streamShutdown) Run(ctx context.Context) error {
-	<-ctx.Done()
-	s.cancel()
-	return nil
-}
-
-// middleware ties each Streaming request's context to the shutdown signal;
-// other requests pass through untouched.
-func (s *streamShutdown) middleware() Middleware {
+// It cancels the request context, and because a handler blocked writing to
+// a client that stopped reading never sees that, it also puts a write
+// deadline on the connection so the write fails.
+func endStreamsOnShutdown() (mw Middleware, begin func()) {
+	shutdown, begin := context.WithCancel(context.Background())
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !middleware.IsStreaming(r) {
@@ -334,8 +318,26 @@ func (s *streamShutdown) middleware() Middleware {
 			}
 			ctx, cancel := context.WithCancel(r.Context())
 			defer cancel()
-			defer context.AfterFunc(s.ctx, cancel)()
+			rc := http.NewResponseController(w)
+			var (
+				mu       sync.Mutex
+				returned bool // the writer must not be touched once the handler has returned
+			)
+			stop := context.AfterFunc(shutdown, func() {
+				cancel()
+				mu.Lock()
+				defer mu.Unlock()
+				if !returned {
+					_ = rc.SetWriteDeadline(time.Now().Add(streamDrain))
+				}
+			})
+			defer func() {
+				stop()
+				mu.Lock()
+				returned = true
+				mu.Unlock()
+			}()
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
-	}
+	}, begin
 }

@@ -37,9 +37,23 @@ write timeouts close long-lived connections.
   handler, `http.StripPrefix` or a sub-mux panics naming the fix, rather
   than leave the stream buffered until a 504.
 - On shutdown the request context of every `Streaming` route is canceled
-  before the server drains (`http.Server.Shutdown` does not cancel request
-  contexts), so an open stream ends instead of holding `Stop` for the
-  whole grace period.
+  as the server begins to drain (`http.Server.Shutdown` does not cancel
+  request contexts; the cancel is registered with `RegisterOnShutdown`), so
+  an open stream ends instead of holding `Stop` for the whole grace period.
+  A handler blocked writing to a client that stopped reading never sees
+  the cancel, so the connection also gets a write deadline one second out:
+  the write fails and the handler returns. The hub still ends its own
+  streams too, since `pkg/sse` also runs without the gox server; its loop
+  returns the same way for either signal.
+- The read deadline bounds the whole request body, so a `Streaming` route
+  cannot carry an upload longer than `HTTP_READ_TIMEOUT`. A stream proxy is
+  for long responses.
+- The route flag describes the request as it arrived. A middleware that
+  rewrites the method or path after `RouteCapture` reaches a route the flag
+  does not describe; onto a `Streaming` route that panics naming the cause.
+- (Amended 2026-11-18: shutdown was first a separate lifecycle component
+  that only canceled contexts, which left a write to a stalled client
+  blocked for the whole grace period.)
 - (Amended 2026-11-17: the flag was first set by a separate `StreamCapture`
   middleware, added to the chain only with `WithSSE`, which left a
   `Streaming` route in a service without a hub buffered and cut by

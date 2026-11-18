@@ -41,12 +41,21 @@ func WithName(name string) Option {
 	return func(s *Server) { s.name = name }
 }
 
+// WithOnShutdown runs f when Stop begins, before in-flight requests drain.
+// Use it to end responses that never finish on their own, such as streams,
+// which http.Server.Shutdown would otherwise wait on for the whole deadline.
+func WithOnShutdown(f func()) Option {
+	return func(s *Server) { s.onShutdown = append(s.onShutdown, f) }
+}
+
 // Server is a lifecycle Component and Runner around http.Server.
 type Server struct {
 	cfg  Config
 	name string
 	log  *slog.Logger
 	http *http.Server
+
+	onShutdown []func()
 
 	mu sync.Mutex
 	ln net.Listener
@@ -65,6 +74,9 @@ func New(cfg Config, handler http.Handler, opts ...Option) *Server {
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
+	}
+	for _, f := range s.onShutdown {
+		s.http.RegisterOnShutdown(f)
 	}
 	return s
 }

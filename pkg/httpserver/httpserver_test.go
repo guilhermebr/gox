@@ -133,6 +133,32 @@ func TestServerServesAndDrainsOnStop(t *testing.T) {
 	}
 }
 
+// A response that only ends when told to would hold the drain; the hook runs
+// as Stop begins, so it can end it.
+func TestServerRunsOnShutdownHookBeforeDraining(t *testing.T) {
+	end := make(chan struct{})
+	entered := make(chan struct{})
+	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		close(entered)
+		<-end
+	})
+	srv := httpserver.New(httpserver.Config{Addr: "127.0.0.1:0"}, handler,
+		httpserver.WithLogger(quiet()), httpserver.WithOnShutdown(func() { close(end) }))
+	base, _ := start(t, srv)
+	go func() {
+		if resp, err := http.Get(base + "/"); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-entered
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := srv.Stop(ctx); err != nil {
+		t.Fatalf("Stop = %v; the hook must end the open response before the drain", err)
+	}
+}
+
 func TestServerStopHardClosesWhenDrainExceedsDeadline(t *testing.T) {
 	entered := make(chan struct{})
 	handler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {

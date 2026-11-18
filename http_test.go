@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -324,6 +325,59 @@ func TestHTTPShutdownEndsStreamingRoutes(t *testing.T) {
 	}
 	if rest, err := io.ReadAll(resp.Body); err != nil || len(rest) != 0 {
 		t.Fatalf("after shutdown: %q %v, want a clean end of stream", rest, err)
+	}
+}
+
+// A client that stops reading leaves a Streaming handler blocked in Write,
+// where a canceled context does not reach it: shutdown puts a deadline on the
+// connection so the write fails, the handler returns and the server drains.
+func TestHTTPShutdownUnblocksAStreamingWriteToAStalledClient(t *testing.T) {
+	setArgs(t)
+	t.Setenv("BILLING_SHUTDOWN_TIMEOUT", "6s")
+	addr := freeAddr(t)
+	t.Setenv("BILLING_HTTP_ADDR", addr)
+	a, err := gox.New("billing", base(gox.HTTP())...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writing := make(chan struct{})
+	a.Mux().Handle("GET /stream", middleware.Streaming(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// A proxy copying an upstream body: it only stops when a write fails.
+		chunk := make([]byte, 64<<10)
+		close(writing)
+		for {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	})))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.RunContext(ctx) }()
+	waitFor(t, func() bool { return a.Health().IsReady() })
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := io.WriteString(conn, "GET /stream HTTP/1.1\r\nHost: billing\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	<-writing // the client never reads, so the handler ends up blocked in Write
+
+	began := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("RunContext = %v; a stalled client must not fail the shutdown", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("shutdown never returned")
+	}
+	if d := time.Since(began); d > 4*time.Second {
+		t.Fatalf("shutdown took %v; a stalled client held the server for the grace period", d)
 	}
 }
 
