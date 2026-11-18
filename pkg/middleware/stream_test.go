@@ -92,3 +92,25 @@ func TestStreamingWorksWithoutRouteCapture(t *testing.T) {
 		t.Fatalf("body = %q", rec.Body)
 	}
 }
+
+// A middleware that rewrites the path after RouteCapture sends the request to
+// a route RouteCapture did not see; the panic names that cause too.
+func TestStreamingReachedAfterAPathRewritePanicsNamingTheRewrite(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.Handle("GET /stream", middleware.Streaming(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+	mux.HandleFunc("GET /plain", func(http.ResponseWriter, *http.Request) {})
+	rewrite := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/stream"
+			next.ServeHTTP(w, r)
+		})
+	}
+	h := middleware.Chain(middleware.RouteCapture(mux.Handler), rewrite)(mux)
+
+	defer func() {
+		if msg := fmt.Sprint(recover()); !strings.Contains(msg, "rewrote the method or path after RouteCapture") {
+			t.Errorf("panic = %q, want one naming the rewrite", msg)
+		}
+	}()
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/plain", nil))
+}

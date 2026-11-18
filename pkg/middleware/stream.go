@@ -20,13 +20,15 @@ type streamingHandler struct{ http.Handler }
 //
 // Behind RouteCapture, a marker reached for a request that was not marked
 // as streaming sits inside another handler (auth, http.StripPrefix, a
-// sub-mux), where Timeout already buffers the response and will cut it: it
+// sub-mux), or behind a middleware that rewrote the request onto this
+// route, where Timeout already buffers the response and will cut it: it
 // panics with the fix rather than stream nothing until the timeout.
 func (s streamingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if info, ok := r.Context().Value(routeKey{}).(routeInfo); ok && !info.streaming {
 		panic(fmt.Sprintf("gox: middleware.Streaming reached inside the handler registered for %q: "+
 			"register middleware.Streaming(h) on the app's mux itself and put auth or other wrappers inside it, "+
-			"not around it or in a sub-mux", Route(r)))
+			"not around it or in a sub-mux; if a middleware rewrote the method or path after RouteCapture, "+
+			"redirect instead or route on the rewritten path", Route(r)))
 	}
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	s.Handler.ServeHTTP(w, r)
@@ -37,9 +39,12 @@ func (s streamingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // requests so Timeout lets them through, the server's write deadline is
 // lifted for the connection, and in a gox app the request context is
 // canceled when shutdown begins, so the handler must return once
-// r.Context() is done. HTTP_READ_TIMEOUT still bounds reading the request
-// body. It must be the handler registered on the mux, so wrap auth inside
-// it: Streaming(requireRole(h)).
+// r.Context() is done; a write still blocked on a client that stopped
+// reading fails a second later. Until then a stalled client is the
+// handler's to drop, with a deadline per write. HTTP_READ_TIMEOUT still
+// bounds reading the request body, so a Streaming route suits a long
+// response, not a long upload. It must be the handler registered on the
+// mux, so wrap auth inside it: Streaming(requireRole(h)).
 func Streaming(h http.Handler) http.Handler {
 	return streamingHandler{Handler: h}
 }

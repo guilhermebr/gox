@@ -435,8 +435,9 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.unsubscribe(s)
 
 	st := &stream{w: w, rc: http.NewResponseController(w), timeout: h.cfg.WriteTimeout, r: r, authorize: h.cfg.Authorize}
-	// The server's read deadline would end the stream; middleware.Streaming
-	// lifts it, and this reports a writer that cannot.
+	// middleware.Streaming keeps the server's read deadline, which net/http
+	// only clears once the request body is read. Lift it here so it cannot
+	// end a stream, and report a writer that cannot set deadlines.
 	if err := st.rc.SetReadDeadline(time.Time{}); err != nil {
 		h.warnNoDeadlines(r, err)
 	}

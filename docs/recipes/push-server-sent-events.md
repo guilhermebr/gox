@@ -90,7 +90,10 @@ subscribe();
 subscription with a cookie (gox/web sessions), or use a fetch-based SSE
 client to send a bearer token. The subscription route is exempt from
 `HTTP_REQUEST_TIMEOUT` and the server's write timeout, as is any route
-registered with `middleware.Streaming`; every other route keeps them. Streams end after `SSEConfig.MaxAge` (15m) so the browser
+registered with `middleware.Streaming`; every other route keeps them.
+`HTTP_READ_TIMEOUT` still bounds the request body of a `Streaming` route, so
+one that proxies another service's stream carries a long response, not a
+long or slow upload. Streams end after `SSEConfig.MaxAge` (15m) so the browser
 reconnects through the middleware chain and an expired token stops them.
 NOTIFY carries about 7.9 KB, so publish an ID or a URL for anything bigger
 (`postgres.ErrSSETooLarge`), and point `POSTGRES_URL` at the database or a
