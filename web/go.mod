@@ -2,12 +2,9 @@ module github.com/guilhermebr/gox/web
 
 go 1.26.0
 
-require github.com/guilhermebr/gox v0.2.0
+require github.com/guilhermebr/gox v0.2.2
 
-require (
-	github.com/klauspost/compress v1.20.2 // indirect
-	go.opentelemetry.io/otel/log v1.47.0 // indirect
-)
+require go.opentelemetry.io/otel/log v1.47.0 // indirect
 
 require (
 	github.com/a-h/templ v0.3.1020

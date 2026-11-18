@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/guilhermebr/gox v0.2.0
+	github.com/guilhermebr/gox v0.2.2
 	github.com/workos/workos-go/v10 v10.6.0
 	golang.org/x/sync v0.25.0
 )
@@ -20,7 +20,6 @@ require (
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
-	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_golang v1.25.0 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
