@@ -3,7 +3,7 @@ module github.com/guilhermebr/gox/openapi
 go 1.26.0
 
 require (
-	github.com/guilhermebr/gox v0.2.0
+	github.com/guilhermebr/gox v0.2.2
 	github.com/pb33f/libopenapi v0.42.4
 	github.com/pb33f/libopenapi-validator v0.16.2
 )
@@ -22,7 +22,6 @@ require (
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
-	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pb33f/go-yaml v0.1.1 // indirect
 	github.com/pb33f/jsonpath v0.8.5 // indirect
