@@ -19,7 +19,9 @@ type routeInfo struct {
 // IsStreaming. Middleware that derive a new *http.Request (Timeout, otelhttp)
 // would otherwise hide the pattern the mux sets, a middleware that rejects a
 // request before the mux, such as auth or CSRF, would log "unmatched", and
-// Timeout could not tell a stream from a slow request.
+// Timeout could not tell a stream from a slow request. What it stores
+// describes the request as it arrived: a later middleware that rewrites the
+// method or path sends the request to a route this did not see.
 func RouteCapture(resolve func(r *http.Request) (http.Handler, string)) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
