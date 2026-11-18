@@ -78,9 +78,10 @@ type SSEConfig struct {
 // such as /orders/{id} or /files/{path...}, or *), the service publishes
 // with a.SSE().Publish, and a reconnecting client resumes from
 // Last-Event-ID, or gets an SSEResyncEvent when what it missed is gone.
-// The subscription route alone is exempt from
-// HTTP_REQUEST_TIMEOUT, HTTP_READ_TIMEOUT and HTTP_WRITE_TIMEOUT; on
-// shutdown every stream ends so the server can drain. It enables a.SSE.
+// The subscription route is registered with middleware.Streaming, so like
+// any Streaming route it is exempt from HTTP_REQUEST_TIMEOUT and
+// HTTP_WRITE_TIMEOUT; on shutdown every stream ends so the server can
+// drain. It enables a.SSE.
 func WithSSE(cfg SSEConfig) HTTPOption {
 	return func(o *httpOptions) { o.sse = &cfg }
 }

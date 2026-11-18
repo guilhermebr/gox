@@ -400,11 +400,7 @@ func TestRouteSurvivesRequestCopiesMadeByInnerMiddleware(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /items/{id}", ok)
 	// Timeout derives a new request; the mux sets the pattern on that copy.
-	resolve := func(r *http.Request) string {
-		_, pattern := mux.Handler(r)
-		return pattern
-	}
-	h := middleware.Chain(middleware.RouteCapture(resolve), middleware.Logging(logger), middleware.Timeout(time.Second))(mux)
+	h := middleware.Chain(middleware.RouteCapture(mux.Handler), middleware.Logging(logger), middleware.Timeout(time.Second))(mux)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/items/1", nil))
 
 	if !strings.Contains(buf.String(), `"route":"GET /items/{id}"`) {
@@ -464,10 +460,6 @@ func TestBearerValidatesTokensAndStoresThePrincipal(t *testing.T) {
 func TestRouteCaptureCanResolveTheRouteBeforeTheMuxRuns(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/items", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) })
-	resolve := func(r *http.Request) string {
-		_, pattern := mux.Handler(r)
-		return pattern
-	}
 	var seen string
 	reject := func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -475,7 +467,7 @@ func TestRouteCaptureCanResolveTheRouteBeforeTheMuxRuns(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 		})
 	}
-	h := middleware.Chain(middleware.RouteCapture(resolve), reject)(mux)
+	h := middleware.Chain(middleware.RouteCapture(mux.Handler), reject)(mux)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/items", nil))
 	if seen != "POST /api/items" {
 		t.Fatalf("Route before the mux = %q", seen)

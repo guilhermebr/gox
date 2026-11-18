@@ -22,13 +22,28 @@ write timeouts close long-lived connections.
   the service publishes `SSEUpdate`s from Go. Private updates reach only
   the subscribers `SSEConfig.Authorize(r, topic)` allows, so the service's
   existing auth decides.
-- The middleware changes only for the SSE route, and only when SSE is
-  enabled. With `WithSSE`, `middleware.StreamCapture` joins the chain and
-  marks requests for the SSE route; `Timeout` lets marked requests through,
-  and the route lifts the server's read and write deadlines for its
-  connection, setting a per-write deadline of its own so a stalled client
-  is dropped. Without `WithSSE` the chain is unchanged, and with it every
-  other route keeps its timeouts.
+- The middleware changes only for streaming routes. `middleware.RouteCapture`,
+  which already resolves each request's route for logs and metrics, flags
+  requests for a route registered with `middleware.Streaming` (the SSE
+  route, or one the service adds, such as a proxy to another service's
+  stream); `Timeout` lets flagged requests through, and the route lifts the
+  server's write deadline for its connection; the SSE route sets a
+  per-write deadline of its own so a stalled client is dropped. The read
+  deadline stays: net/http clears it once the request body is read, so it
+  never cuts a response, and it keeps a client from trickling a body in.
+  Every other route keeps its timeouts.
+- `middleware.Streaming` must be the handler registered on the app's mux;
+  wrappers such as auth go inside it. A marker reached behind another
+  handler, `http.StripPrefix` or a sub-mux panics naming the fix, rather
+  than leave the stream buffered until a 504.
+- On shutdown the request context of every `Streaming` route is canceled
+  before the server drains (`http.Server.Shutdown` does not cancel request
+  contexts), so an open stream ends instead of holding `Stop` for the
+  whole grace period.
+- (Amended 2026-11-17: the flag was first set by a separate `StreamCapture`
+  middleware, added to the chain only with `WithSSE`, which left a
+  `Streaming` route in a service without a hub buffered and cut by
+  `Timeout`, with no signal at shutdown; it also lifted the read deadline.)
 - Delivery never blocks a publisher: a subscriber that falls behind is
   disconnected and resumes with `Last-Event-ID` from an in-memory history.
   When what it missed is gone (the ID left the history, or the transport

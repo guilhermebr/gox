@@ -7,18 +7,26 @@ import (
 
 type routeKey struct{}
 
-// RouteCapture stores the route pattern for the request at the top of the
-// chain, resolved by resolve (typically mux.Handler) before any middleware
-// runs. Middleware that derive a new *http.Request (Timeout, otelhttp) would
-// otherwise hide the pattern the mux sets, and a middleware that rejects a
-// request before the mux, such as auth or CSRF, would log "unmatched".
-func RouteCapture(resolve func(r *http.Request) string) Middleware {
+// routeInfo is what RouteCapture learned about the request's route.
+type routeInfo struct {
+	pattern   string
+	streaming bool
+}
+
+// RouteCapture resolves the request's route at the top of the chain with
+// resolve (pass mux.Handler), before any middleware runs, and stores its
+// pattern for Route and whether it was registered with Streaming for
+// IsStreaming. Middleware that derive a new *http.Request (Timeout, otelhttp)
+// would otherwise hide the pattern the mux sets, a middleware that rejects a
+// request before the mux, such as auth or CSRF, would log "unmatched", and
+// Timeout could not tell a stream from a slow request.
+func RouteCapture(resolve func(r *http.Request) (http.Handler, string)) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if p := resolve(r); p != "" {
-				r = r.WithContext(context.WithValue(r.Context(), routeKey{}, p))
-			}
-			next.ServeHTTP(w, r)
+			h, pattern := resolve(r)
+			_, streaming := h.(streamingHandler)
+			info := routeInfo{pattern: pattern, streaming: streaming}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), routeKey{}, info)))
 		})
 	}
 }
@@ -27,8 +35,8 @@ func RouteCapture(resolve func(r *http.Request) string) Middleware {
 // "unmatched". It prefers the captured pattern and falls back to r.Pattern
 // for chains that wrap the mux directly.
 func Route(r *http.Request) string {
-	if p, ok := r.Context().Value(routeKey{}).(string); ok && p != "" {
-		return p
+	if info, ok := r.Context().Value(routeKey{}).(routeInfo); ok && info.pattern != "" {
+		return info.pattern
 	}
 	if r.Pattern != "" {
 		return r.Pattern
