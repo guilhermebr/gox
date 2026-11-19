@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/guilhermebr/gox v0.2.2
-	github.com/resend/resend-go/v4 v4.12.0
+	github.com/resend/resend-go/v4 v4.12.1
 )
 
 require (
