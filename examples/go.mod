@@ -54,7 +54,7 @@ replace github.com/guilhermebr/gox => ../
 
 require (
 	github.com/guilhermebr/gox/postgres v0.0.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 )
 
 replace github.com/guilhermebr/gox/postgres => ../postgres

@@ -4,8 +4,8 @@ go 1.26.0
 
 require (
 	github.com/guilhermebr/gox v0.2.2
-	github.com/pb33f/libopenapi v0.42.4
-	github.com/pb33f/libopenapi-validator v0.16.2
+	github.com/pb33f/libopenapi v0.42.5
+	github.com/pb33f/libopenapi-validator v0.16.3
 )
 
 require (
